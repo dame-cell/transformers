@@ -49,6 +49,7 @@ class Tracker:
     def __call__(self, x: Tensor):
         for m in self.module.modules():
             self.handles.append(m.register_forward_hook(self._forward_hook))
+            
         self.module(x)
         [x.remove() for x in self.handles]
         return self
