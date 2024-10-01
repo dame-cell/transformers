@@ -693,6 +693,7 @@ _import_structure = {
     "models.regnet": ["RegNetConfig"],
     "models.rembert": ["RemBertConfig"],
     "models.resnet": ["ResNetConfig"],
+    "models.barlowtwins": ["BarlowTwinsConfig"],
     "models.roberta": [
         "RobertaConfig",
         "RobertaTokenizer",
@@ -3174,6 +3175,14 @@ else:
             "ResNetPreTrainedModel",
         ]
     )
+    _import_structure["models.barlowtwins"].extend(
+        [
+            "BarlowTwinsBackbone",
+            "BarlowTwinsForImageClassification",
+            "BarlowTwinsModel",
+            "BarlowTwinsPreTrainedModel",
+        ]
+    )
     _import_structure["models.roberta"].extend(
         [
             "RobertaForCausalLM",
@@ -5557,6 +5566,7 @@ if TYPE_CHECKING:
     from .models.regnet import RegNetConfig
     from .models.rembert import RemBertConfig
     from .models.resnet import ResNetConfig
+    from .models.barlowtwins import BarlowTwinsConfig
     from .models.roberta import (
         RobertaConfig,
         RobertaTokenizer,
@@ -7682,6 +7692,12 @@ if TYPE_CHECKING:
             ResNetForImageClassification,
             ResNetModel,
             ResNetPreTrainedModel,
+        )
+        from .models.barlowtwins import (
+            BarlowTwinsBackbone,
+            BarlowTwinsForImageClassification,
+            BarlowTwinsModel,
+            BarlowTwinsPreTrainedModel,
         )
         from .models.roberta import (
             RobertaForCausalLM,

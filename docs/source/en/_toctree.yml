@@ -605,6 +605,8 @@
       title: Text models
     - isExpanded: false
       sections:
+      - local: model_doc/barlowtwins
+        title: BarlowTwins
       - local: model_doc/beit
         title: BEiT
       - local: model_doc/bit
