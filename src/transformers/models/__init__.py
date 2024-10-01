@@ -210,6 +210,7 @@ from . import (
     regnet,
     rembert,
     resnet,
+    barlowtwins,
     roberta,
     roberta_prelayernorm,
     roc_bert,
