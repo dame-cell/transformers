@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 Microsoft Research, Inc. and The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 Facebook AI research, Inc. and The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -384,6 +384,7 @@ class BarlowTwinsForImageClassification(BarlowTwinsPreTrainedModel):
         super().__init__(config)
         self.num_labels = config.num_labels
         self.barlowtwins = BarlowTwinsModel(config)
+
         # classification head
         self.classifier = nn.Sequential(
             nn.Flatten(),
@@ -414,7 +415,6 @@ class BarlowTwinsForImageClassification(BarlowTwinsPreTrainedModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         outputs = self.barlowtwins(pixel_values, output_hidden_states=output_hidden_states, return_dict=return_dict)
-
         pooled_output = outputs.pooler_output if return_dict else outputs[1]
 
         logits = self.classifier(pooled_output)
