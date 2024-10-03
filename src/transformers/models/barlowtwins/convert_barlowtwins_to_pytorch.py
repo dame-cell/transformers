@@ -131,8 +131,7 @@ def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory
         
 
         print("ResNet50 features shape:", resnet_features.shape)
-        print("BarlowTwins output shape (before pooling):", barlowtwins_output.logits.shape)
-        print("BarlowTwins output shape (after pooling):", barlowtwins_output.logits.shape)
+        print("BarlowTwins output shape", barlowtwins_output.logits.shape)
         print("ResNet50 features (first 5):", resnet_features[0, :5])
         print("BarlowTwins output (first 5):", barlowtwins_output.logits[0, :5])
         
