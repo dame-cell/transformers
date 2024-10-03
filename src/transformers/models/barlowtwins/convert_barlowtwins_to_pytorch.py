@@ -101,23 +101,20 @@ def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory
 
     assert torch.allclose(from_model(x), our_model(x).logits), "The model logits don't match the original one."
 
-    checkpoint_name = f"barlowtwins{'-'.join(name.split('barlowtwins'))}"
-    print(checkpoint_name)
-
+    checkpoint_name = f"barlowtwins-{name.replace('barlowtwins', '')}" if 'barlowtwins' in name else f"barlowtwins-{name}"
     if push_to_hub:
-            our_model.push_to_hub(
-                repo_path_or_name=save_directory / checkpoint_name,
-                commit_message="Add model",
-                use_temp_dir=True,
-            )
-        #we can use the convnext one
+        our_model.push_to_hub(
+            repo_path_or_name=f"damerajee/{checkpoint_name}",
+            commit_message="Add model",
+            use_temp_dir=True
+        )
 
-        #image_processor = AutoImageProcessor.from_pretrained("facebook/convnext-base-224-22k-1k")
-        #image_processor.push_to_hub(
-            #repo_path_or_name=save_directory / checkpoint_name,
-            #commit_message="Add image processor",
-            #use_temp_dir=True,
-        #)
+        image_processor = AutoImageProcessor.from_pretrained("facebook/convnext-base-224-22k-1k")
+        image_processor.push_to_hub(
+            repo_path_or_name=f"damerajee/{checkpoint_name}",
+            commit_message="Add image processor",
+            use_temp_dir=True
+        )
 
     print(f"Pushed {checkpoint_name}")
 
@@ -150,7 +147,7 @@ def convert_weights_and_push(save_directory: Path, model_name: str = None, push_
         for model_name, config in names_to_config.items():
             convert_weight_and_push(model_name, config, save_directory, push_to_hub=False)
         print("it works")
-        return config, expected_shape  # This will only be reached if the above loop runs
+        return config, expected_shape  
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
