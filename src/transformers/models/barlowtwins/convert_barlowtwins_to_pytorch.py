@@ -27,7 +27,7 @@ import torch.nn as nn
 from huggingface_hub import hf_hub_download
 from torch import Tensor
 
-from transformers import AutoImageProcessor, BarlowTwinsConfig, BarlowTwinsForImageClassification
+from transformers import AutoImageProcessor, BarlowTwinsForImageClassification , BarlowTwinsConfig , BarlowTwinsModel
 from transformers.utils import logging
 from PIL import Image 
 import requests 
@@ -35,61 +35,24 @@ import requests
 
 logging.set_verbosity_info()
 logger = logging.get_logger()
-import warnings
-warnings.filterwarnings("ignore")
-
-def prepare_img():
-    url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-    image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
-    return image
-
-def create_resnet_to_barlowtwins_rename_keys():
-    rename_keys = []
-    
-    # Initial layers
-    rename_keys.append(("conv1.weight", "barlowtwins.embedder.embedder.convolution.weight"))
-    rename_keys.append(("bn1.weight", "barlowtwins.embedder.embedder.normalization.weight"))
-    rename_keys.append(("bn1.bias", "barlowtwins.embedder.embedder.normalization.bias"))
-    rename_keys.append(("bn1.running_mean", "barlowtwins.embedder.embedder.normalization.running_mean"))
-    rename_keys.append(("bn1.running_var", "barlowtwins.embedder.embedder.normalization.running_var"))
-    rename_keys.append(("bn1.num_batches_tracked", "barlowtwins.embedder.embedder.normalization.num_batches_tracked"))
-
-    # Encoder stages
-    for stage in range(4):
-        num_layers = 3 if stage == 0 else 4 if stage == 1 else 6 if stage == 2 else 3
-        for layer in range(num_layers):
-            base_resnet = f"layer{stage+1}.{layer}"
-            base_barlowtwins = f"barlowtwins.encoder.stages.{stage}.layers.{layer}"
-
-            # Shortcut (downsample) layers
-            if layer == 0:
-                rename_keys.append((f"{base_resnet}.downsample.0.weight", f"{base_barlowtwins}.shortcut.convolution.weight"))
-                rename_keys.append((f"{base_resnet}.downsample.1.weight", f"{base_barlowtwins}.shortcut.normalization.weight"))
-                rename_keys.append((f"{base_resnet}.downsample.1.bias", f"{base_barlowtwins}.shortcut.normalization.bias"))
-                rename_keys.append((f"{base_resnet}.downsample.1.running_mean", f"{base_barlowtwins}.shortcut.normalization.running_mean"))
-                rename_keys.append((f"{base_resnet}.downsample.1.running_var", f"{base_barlowtwins}.shortcut.normalization.running_var"))
-                rename_keys.append((f"{base_resnet}.downsample.1.num_batches_tracked", f"{base_barlowtwins}.shortcut.normalization.num_batches_tracked"))
-
-            # Convolutions and Batch Norms
-            for i in range(3):
-                rename_keys.append((f"{base_resnet}.conv{i+1}.weight", f"{base_barlowtwins}.layer.{i}.convolution.weight"))
-                rename_keys.append((f"{base_resnet}.bn{i+1}.weight", f"{base_barlowtwins}.layer.{i}.normalization.weight"))
-                rename_keys.append((f"{base_resnet}.bn{i+1}.bias", f"{base_barlowtwins}.layer.{i}.normalization.bias"))
-                rename_keys.append((f"{base_resnet}.bn{i+1}.running_mean", f"{base_barlowtwins}.layer.{i}.normalization.running_mean"))
-                rename_keys.append((f"{base_resnet}.bn{i+1}.running_var", f"{base_barlowtwins}.layer.{i}.normalization.running_var"))
-                rename_keys.append((f"{base_resnet}.bn{i+1}.num_batches_tracked", f"{base_barlowtwins}.layer.{i}.normalization.num_batches_tracked"))
-
-    # Final fully connected layer (if applicable)
-    rename_keys.append(("fc.weight", "classifier.1.weight"))
-    rename_keys.append(("fc.bias", "classifier.1.bias"))
-
-    return rename_keys
 
 
+@dataclass
+class Tracker:
+    module: nn.Module
+    traced: List[nn.Module] = field(default_factory=list)
+    handles: list = field(default_factory=list)
+    module_names: List[str] = field(default_factory=list)  # Added to track module names
 
-def transfer_weights(resnet50_state_dict, barlowtwins_state_dict):
-    rename_keys = create_resnet_to_barlowtwins_rename_keys()
-    new_state_dict = {}
+    def _forward_hook(self, m, inputs: Tensor, outputs: Tensor):
+        has_not_submodules = len(list(m.modules())) == 1 or isinstance(m, nn.Conv2d) or isinstance(m, nn.BatchNorm2d)
+        if has_not_submodules:
+            self.traced.append(m)
+            # Store the full path of the module
+            for name, module in self.module.named_modules():
+                if module is m:
+                    self.module_names.append(name)
+                    break
 
     def __call__(self, x: Tensor):
         for m in self.module.modules():
@@ -98,57 +61,193 @@ def transfer_weights(resnet50_state_dict, barlowtwins_state_dict):
         [x.remove() for x in self.handles]
         return self
 
-    # Check for keys in BarlowTwins that are not in our mapped state dict
-    for key in barlowtwins_state_dict.keys():
-        if key not in new_state_dict:
-            print(f"Key in BarlowTwins model not mapped from ResNet50: {key}")
-            # Initialize these keys with zeros or random values
-            new_state_dict[key] = torch.zeros_like(barlowtwins_state_dict[key])
+    @property
+    def parametrized(self):
+        return list(filter(lambda x: len(list(x.state_dict().keys())) > 0, self.traced))
 
-    return new_state_dict
+    def print_module_info(self):
+        """Print detailed information about traced modules"""
+        print(f"\nModule Structure for {type(self.module).__name__}:")
+        for i, (module, name) in enumerate(zip(self.traced, self.module_names)):
+            print(f"\n{i+1}. Module: {name}")
+            print(f"   Type: {type(module).__name__}")
+            print(f"   Parameters: {sum(p.numel() for p in module.parameters())}")
+            for param_name, param in module.named_parameters():
+                print(f"   - {param_name}: {tuple(param.shape)}")
 
+@dataclass
+class ModuleTransfer:
+    src: nn.Module
+    dest: nn.Module
+    verbose: int = 0
+    src_skip: List = field(default_factory=list)
+    dest_skip: List = field(default_factory=list)
+
+    def verify_weights(self, src_m: nn.Module, dest_m: nn.Module) -> bool:
+        """Verify if weights were transferred correctly"""
+        src_state = src_m.state_dict()
+        dest_state = dest_m.state_dict()
+        
+        if src_state.keys() != dest_state.keys():
+            print(f"\nWarning: Different state dict keys!")
+            print(f"Source keys: {list(src_state.keys())}")
+            print(f"Destination keys: {list(dest_state.keys())}")
+            return False
+        
+        all_match = True
+        for key in src_state.keys():
+            if not torch.allclose(src_state[key], dest_state[key], rtol=1e-4, atol=1e-4):
+                print(f"\nMismatch in {key}:")
+                print(f"Max difference: {(src_state[key] - dest_state[key]).abs().max().item()}")
+                print(f"Mean difference: {(src_state[key] - dest_state[key]).abs().mean().item()}")
+                print(f"Source shape: {src_state[key].shape}")
+                print(f"Dest shape: {dest_state[key].shape}")
+                all_match = False
+        return all_match
+
+    def __call__(self, x: Tensor):
+        print("\nStarting weight transfer verification...")
+        
+        # Track modules
+        dest_tracker = Tracker(self.dest)
+        src_tracker = Tracker(self.src)
+        
+        # Get traced modules
+        dest_traced = dest_tracker(x).parametrized
+        src_traced = src_tracker(x).parametrized
+
+        # Print detailed module information
+        print("\nSource model structure:")
+        src_tracker.print_module_info()
+        print("\nDestination model structure:")
+        dest_tracker.print_module_info()
+
+        # Filter modules
+        src_traced = list(filter(lambda x: type(x) not in self.src_skip, src_traced))
+        dest_traced = list(filter(lambda x: type(x) not in self.dest_skip, dest_traced))
+
+        if len(dest_traced) != len(src_traced):
+            raise Exception(
+                f"Numbers of operations are different.\n"
+                f"Source module has {len(src_traced)} operations: {[type(m).__name__ for m in src_traced]}\n"
+                f"Destination module has {len(dest_traced)} operations: {[type(m).__name__ for m in dest_traced]}"
+            )
+
+        all_transfers_verified = True
+        for i, (dest_m, src_m) in enumerate(zip(dest_traced, src_traced)):
+            print(f"\nTransferring weights for module pair {i+1}:")
+            print(f"Source: {type(src_m).__name__}")
+            print(f"Destination: {type(dest_m).__name__}")
+            
+            if type(src_m) != type(dest_m):
+                print(f"Warning: Module types don't match!")
+            
+            # Transfer weights
+            dest_m.load_state_dict(src_m.state_dict())
+            
+            # Verify transfer
+            if not self.verify_weights(src_m, dest_m):
+                print(f"Warning: Weight verification failed for module pair {i+1}")
+                all_transfers_verified = False
+            else:
+                print(f"✓ Weight transfer verified for module pair {i+1}")
+
+            if self.verbose == 1:
+                print(f"Transferred from={src_m} to={dest_m}")
+
+        if all_transfers_verified:
+            print("\n✓ All weight transfers verified successfully!")
+        else:
+            print("\n⚠ Some weight transfers could not be verified!")
+            print("This might be due to architectural differences or normalization layers.")
+
+
+import torchvision.transforms as transforms
+from PIL import Image
+import numpy as np
+
+def transform_image(image: Image.Image) -> torch.Tensor:
+    # Parameters from ConvNextImageProcessor
+    crop_pct = 0.875
+    image_mean = [0.485, 0.456, 0.406]
+    image_std = [0.229, 0.224, 0.225]
+    size = 224
+
+    crop_size = int(size / crop_pct)
+
+    transform = transforms.Compose([
+        transforms.Resize(crop_size, interpolation=transforms.InterpolationMode.BICUBIC),
+        transforms.CenterCrop(size),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=image_mean, std=image_std)
+    ])
+    
+    transformed_image = transform(image)
+    return transformed_image
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory: Path, push_to_hub: bool = True):
     print(f"Converting {name}...")
     with torch.no_grad():
-        from_model = torch.hub.load('facebookresearch/barlowtwins:main', 'resnet50')
-        our_model = BarlowTwinsForImageClassification(config).eval()
-      
-        new_state_dict = transfer_weights(from_model.state_dict(), our_model.state_dict())
-        incompatible_keys = our_model.load_state_dict(new_state_dict, strict=False)
+        from_model = torch.hub.load('facebookresearch/barlowtwins:main', name)
+        from_model = nn.Sequential(*(list(from_model.children())[:-1])) 
+ 
+        our_model = BarlowTwinsModel(config=config)
 
-        if incompatible_keys.missing_keys:
-            print("Missing keys:", incompatible_keys.missing_keys)
-        if incompatible_keys.unexpected_keys:
-            print("Unexpected keys:", incompatible_keys.unexpected_keys)
+        print("barlowtwins architecture:",our_model)
+        print("resnet50 architecture:",from_model)
+        
+        print("from_model paramtere count",count_parameters(from_model))
+        print("our_model paramtere count",count_parameters(our_model))
 
+
+        module_transfer = ModuleTransfer(src=from_model, dest=our_model,verbose=1)
         x = torch.randn((1, 3, 224, 224))
+        processor = AutoImageProcessor.from_pretrained("microsoft/resnet-50")
+        from datasets import load_dataset
+
+        dataset = load_dataset("huggingface/cats-image")
+        image = dataset["test"]["image"][0]
+        inputs = processor(image, return_tensors="pt").pixel_values
+        from_inputs = transform_image(image).unsqueeze(0)
+        # Convert inputs to PyTorch tensor if it's not already
+        if not isinstance(inputs, torch.Tensor):
+            inputs = torch.tensor(inputs)
+        
+        # Ensure both tensors are on the same device
+        from_inputs = from_inputs.to(inputs.device)
+        
+        print("from_inputs shape:", from_inputs.shape)
+        print("inputs shape:", inputs.shape)
+        
+        # Print some sample values
+        print("Sample values from from_inputs:")
+        print(from_inputs[0, :3, :3, :3])
+        print("Sample values from inputs:")
+        print(inputs[0, :3, :3, :3])
+        
+        assert torch.allclose(from_inputs, inputs[0]), "The pixel values do not match somehow"
         
 
-        resnet_features = from_model(x)
-        # Get the output from our BarlowTwins model
-        barlowtwins_output = our_model(x)
-        
 
-        print("ResNet50 features shape:", resnet_features.shape)
-        print("BarlowTwins output shape", barlowtwins_output.logits.shape)
-        print("ResNet50 features (first 5):", resnet_features[0, :5])
-        print("BarlowTwins output (first 5):", barlowtwins_output.logits[0, :5])
-        
-        # Calculate the maximum absolute difference
-        max_diff = torch.max(torch.abs(resnet_features - barlowtwins_output.logits))
-        print("Maximum absolute difference:", max_diff.item())
-        
-        # Calculate the mean squared error
-        mse = torch.mean((resnet_features - barlowtwins_output.logits) ** 2)
-        print("Mean Squared Error:", mse.item())
-            
+        from_model_out = from_model(from_inputs)
+        print("from_model_out",from_model_out.size())
+        our_model_out = our_model(inputs)
+        print("our_model_out",our_model_out.pooler_output.size())
+
+
+
+
+        print("our_model_out ", our_model_out.pooler_output)
+        print("from_model_out", from_model_out)
+     
     # Use a higher tolerance due to potential differences in implementation
-    assert torch.allclose(resnet_features, barlowtwins_output.logits), "The model outputs don't match the original one."
+    assert torch.allclose(from_model_out, our_model_out.pooler_output), "The model logits don't match the original one."
 
     checkpoint_name = f"resnet{'-'.join(name.split('resnet'))}"
     print(checkpoint_name)
-
 
     if push_to_hub:
         our_model.push_to_hub(
@@ -172,28 +271,24 @@ def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory
 def convert_weights_and_push(save_directory: Path, model_name: str = None, push_to_hub: bool = True):
     filename = "imagenet-1k-id2label.json"
     num_labels = 1000
-    expected_shape = (1, num_labels)
 
+    # Load ImageNet labels
     repo_id = "huggingface/label-files"
-    num_labels = num_labels
     id2label = json.load(open(hf_hub_download(repo_id, filename, repo_type="dataset"), "r"))
     id2label = {int(k): v for k, v in id2label.items()}
-
-    id2label = id2label
     label2id = {v: k for k, v in id2label.items()}
-
+    
     ImageNetPreTrainedConfig = partial(BarlowTwinsConfig, num_labels=num_labels, id2label=id2label, label2id=label2id)
 
     names_to_config = {
 
         "resnet50": ImageNetPreTrainedConfig(
-            depths=[3, 4, 6, 3], hidden_sizes=[256, 512, 1024, 2048], layer_type="bottleneck"
+            depths=[3, 4, 6, 3], hidden_sizes=[256, 512, 1024, 2048],embedding_size=64, layer_type="bottleneck"
         ),
     }
 
-    if model_name:
-        convert_weight_and_push(model_name, names_to_config[model_name], save_directory, push_to_hub)
-   
+    convert_weight_and_push(model_name, names_to_config[model_name], save_directory, push_to_hub)    
+    return names_to_config
 
 
 if __name__ == "__main__":
@@ -226,4 +321,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     pytorch_dump_folder_path: Path = args.pytorch_dump_folder_path
     pytorch_dump_folder_path.mkdir(exist_ok=True, parents=True)
-    convert_weights_and_push(pytorch_dump_folder_path, args.model_name, args.push_to_hub)
+    convert_weights_and_push(pytorch_dump_folder_path,args.model_name,args.push_to_hub)
+

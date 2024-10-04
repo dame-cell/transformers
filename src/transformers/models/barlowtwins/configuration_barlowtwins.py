@@ -94,8 +94,9 @@ class BarlowTwinsConfig(BackboneConfigMixin, PretrainedConfig):
         depths=[3, 4, 6, 3],
         layer_type="bottleneck",
         hidden_act="relu",
+        inplace_act = True,
         downsample_in_first_stage=False,
-        downsample_in_bottleneck=False,
+        downsample_in_bottleneck=True,
         out_features=None,
         out_indices=None,
         **kwargs,
@@ -107,6 +108,7 @@ class BarlowTwinsConfig(BackboneConfigMixin, PretrainedConfig):
         self.embedding_size = embedding_size
         self.hidden_sizes = hidden_sizes
         self.depths = depths
+        self.inplace_act = inplace_act
         self.layer_type = layer_type
         self.hidden_act = hidden_act
         self.downsample_in_first_stage = downsample_in_first_stage
