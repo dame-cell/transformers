@@ -124,20 +124,11 @@ def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory
         from_model = torch.hub.load('facebookresearch/barlowtwins:main', name)
  
         our_model = BarlowTwinsForImageClassification(config=config)
-
-
-
-
-
         module_transfer = ModuleTransfer(src=from_model, dest=our_model)
         x = torch.randn((1, 3, 224, 224))
         module_transfer(x)
         from_model_outs = from_model(x)
         our_model_outs = our_model(x).logits
-
- 
-
-
         assert torch.allclose(from_model(x), our_model(x).logits), "The model logits don't match the original one."
     
         processor = AutoImageProcessor.from_pretrained("microsoft/resnet-50")
@@ -145,19 +136,18 @@ def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory
 
         dataset = load_dataset("huggingface/cats-image")
         image = dataset["test"]["image"][0]
+        
         inputs = processor(image, return_tensors="pt").pixel_values
         from_inputs = transform_image(image).unsqueeze(0)
+
         if not isinstance(inputs, torch.Tensor):
             inputs = torch.tensor(inputs)
         from_inputs = from_inputs.to(inputs.device)    
         assert torch.allclose(from_inputs, inputs[0]), "The pixel values do not match somehow"
         
-
-
         from_model_out = from_model(from_inputs)
         our_model_out = our_model(inputs)
 
-     
     # Use a higher tolerance due to potential differences in implementation
     assert torch.allclose(from_model_out, our_model_out.logits), "The model logits don't match the original one."
 
