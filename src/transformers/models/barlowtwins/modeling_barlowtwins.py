@@ -57,13 +57,13 @@ _IMAGE_CLASS_EXPECTED_OUTPUT = "tiger cat"
 
 # Copied from transformers.models.resnet.modeling_resnet.ResNetConvLayer with ResNet->BarlowTwins
 class BarlowTwinsConvLayer(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int = 3, stride: int = 1, activation: str = "relu", inplace_act: bool = True):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int = 3, stride: int = 1, activation: str = "relu"):
         super().__init__()
         self.convolution = nn.Conv2d(
             in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=kernel_size // 2, bias=False
         )
         self.normalization = nn.BatchNorm2d(out_channels)
-        self.activation = nn.ReLU(inplace=inplace_act) 
+        self.activation = ACT2FN[activation] if activation is not None else nn.Identity()
 
     def forward(self, input: Tensor) -> Tensor:
         hidden_state = self.convolution(input)
@@ -145,14 +145,34 @@ class BarlowTwinsBasicLayer(nn.Module):
 
 # Copied from transformers.models.resnet.modeling_resnet.ResNetBottleNeckLayer with ResNet->BarlowTwins
 class BarlowTwinsBottleNeckLayer(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, stride: int = 1, activation: str = "relu", reduction: int = 4):
+    """
+    A classic ResNet's bottleneck layer composed by three `3x3` convolutions.
+
+    The first `1x1` convolution reduces the input by a factor of `reduction` in order to make the second `3x3`
+    convolution faster. The last `1x1` convolution remaps the reduced features to `out_channels`. If
+    `downsample_in_bottleneck` is true, downsample will be in the first layer instead of the second layer.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        stride: int = 1,
+        activation: str = "relu",
+        reduction: int = 4,
+        downsample_in_bottleneck: bool = False,
+    ):
         super().__init__()
         should_apply_shortcut = in_channels != out_channels or stride != 1
         reduces_channels = out_channels // reduction
-        self.shortcut = BarlowTwinsShortCut(in_channels, out_channels, stride=stride) if should_apply_shortcut else nn.Identity()
+        self.shortcut = (
+            BarlowTwinsShortCut(in_channels, out_channels, stride=stride) if should_apply_shortcut else nn.Identity()
+        )
         self.layer = nn.Sequential(
-            BarlowTwinsConvLayer(in_channels, reduces_channels, kernel_size=1, stride=stride),
-            BarlowTwinsConvLayer(reduces_channels, reduces_channels),
+            BarlowTwinsConvLayer(
+                in_channels, reduces_channels, kernel_size=1, stride=stride if downsample_in_bottleneck else 1
+            ),
+            BarlowTwinsConvLayer(reduces_channels, reduces_channels, stride=stride if not downsample_in_bottleneck else 1),
             BarlowTwinsConvLayer(reduces_channels, out_channels, kernel_size=1, activation=None),
         )
         self.activation = ACT2FN[activation]
@@ -165,13 +185,35 @@ class BarlowTwinsBottleNeckLayer(nn.Module):
         hidden_state = self.activation(hidden_state)
         return hidden_state
 
-
 class BarlowTwinsStage(nn.Module):
-    def __init__(self, config, in_channels: int, out_channels: int, stride: int = 2, depth: int = 2):
+    """
+    A ResNet stage composed by stacked layers.
+    """
+
+    def __init__(
+        self,
+        config: BarlowTwinsConfig,
+        in_channels: int,
+        out_channels: int,
+        stride: int = 2,
+        depth: int = 2,
+    ):
         super().__init__()
+
+        layer = BarlowTwinsBottleNeckLayer if config.layer_type == "bottleneck" else BarlowTwinsBasicLayer
+
+        if config.layer_type == "bottleneck":
+            first_layer = layer(
+                in_channels,
+                out_channels,
+                stride=stride,
+                activation=config.hidden_act,
+                downsample_in_bottleneck=config.downsample_in_bottleneck,
+            )
+        else:
+            first_layer = layer(in_channels, out_channels, stride=stride, activation=config.hidden_act)
         self.layers = nn.Sequential(
-            BarlowTwinsBottleNeckLayer(in_channels, out_channels, stride=stride, activation=config.hidden_act),
-            *[BarlowTwinsBottleNeckLayer(out_channels, out_channels, activation=config.hidden_act) for _ in range(depth - 1)]
+            first_layer, *[layer(out_channels, out_channels, activation=config.hidden_act) for _ in range(depth - 1)]
         )
 
     def forward(self, input: Tensor) -> Tensor:
@@ -179,7 +221,6 @@ class BarlowTwinsStage(nn.Module):
         for layer in self.layers:
             hidden_state = layer(hidden_state)
         return hidden_state
-
 
 
 

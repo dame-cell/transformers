@@ -19,7 +19,8 @@ import json
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Tuple
+import logging
 
 import timm
 import torch
@@ -42,17 +43,11 @@ class Tracker:
     module: nn.Module
     traced: List[nn.Module] = field(default_factory=list)
     handles: list = field(default_factory=list)
-    module_names: List[str] = field(default_factory=list)  # Added to track module names
 
     def _forward_hook(self, m, inputs: Tensor, outputs: Tensor):
         has_not_submodules = len(list(m.modules())) == 1 or isinstance(m, nn.Conv2d) or isinstance(m, nn.BatchNorm2d)
         if has_not_submodules:
             self.traced.append(m)
-            # Store the full path of the module
-            for name, module in self.module.named_modules():
-                if module is m:
-                    self.module_names.append(name)
-                    break
 
     def __call__(self, x: Tensor):
         for m in self.module.modules():
@@ -63,17 +58,8 @@ class Tracker:
 
     @property
     def parametrized(self):
+        # check the len of the state_dict keys to see if we have learnable params
         return list(filter(lambda x: len(list(x.state_dict().keys())) > 0, self.traced))
-
-    def print_module_info(self):
-        """Print detailed information about traced modules"""
-        print(f"\nModule Structure for {type(self.module).__name__}:")
-        for i, (module, name) in enumerate(zip(self.traced, self.module_names)):
-            print(f"\n{i+1}. Module: {name}")
-            print(f"   Type: {type(module).__name__}")
-            print(f"   Parameters: {sum(p.numel() for p in module.parameters())}")
-            for param_name, param in module.named_parameters():
-                print(f"   - {param_name}: {tuple(param.shape)}")
 
 @dataclass
 class ModuleTransfer:
@@ -83,83 +69,27 @@ class ModuleTransfer:
     src_skip: List = field(default_factory=list)
     dest_skip: List = field(default_factory=list)
 
-    def verify_weights(self, src_m: nn.Module, dest_m: nn.Module) -> bool:
-        """Verify if weights were transferred correctly"""
-        src_state = src_m.state_dict()
-        dest_state = dest_m.state_dict()
-        
-        if src_state.keys() != dest_state.keys():
-            print(f"\nWarning: Different state dict keys!")
-            print(f"Source keys: {list(src_state.keys())}")
-            print(f"Destination keys: {list(dest_state.keys())}")
-            return False
-        
-        all_match = True
-        for key in src_state.keys():
-            if not torch.allclose(src_state[key], dest_state[key], rtol=1e-4, atol=1e-4):
-                print(f"\nMismatch in {key}:")
-                print(f"Max difference: {(src_state[key] - dest_state[key]).abs().max().item()}")
-                print(f"Mean difference: {(src_state[key] - dest_state[key]).abs().mean().item()}")
-                print(f"Source shape: {src_state[key].shape}")
-                print(f"Dest shape: {dest_state[key].shape}")
-                all_match = False
-        return all_match
-
     def __call__(self, x: Tensor):
-        print("\nStarting weight transfer verification...")
-        
-        # Track modules
-        dest_tracker = Tracker(self.dest)
-        src_tracker = Tracker(self.src)
-        
-        # Get traced modules
-        dest_traced = dest_tracker(x).parametrized
-        src_traced = src_tracker(x).parametrized
+        """
+        Transfer the weights of `self.src` to `self.dest` by performing a forward pass using `x` as input. Under the
+        hood we tracked all the operations in both modules.
+        """
+        dest_traced = Tracker(self.dest)(x).parametrized
+        src_traced = Tracker(self.src)(x).parametrized
 
-        # Print detailed module information
-        print("\nSource model structure:")
-        src_tracker.print_module_info()
-        print("\nDestination model structure:")
-        dest_tracker.print_module_info()
-
-        # Filter modules
         src_traced = list(filter(lambda x: type(x) not in self.src_skip, src_traced))
         dest_traced = list(filter(lambda x: type(x) not in self.dest_skip, dest_traced))
 
         if len(dest_traced) != len(src_traced):
             raise Exception(
-                f"Numbers of operations are different.\n"
-                f"Source module has {len(src_traced)} operations: {[type(m).__name__ for m in src_traced]}\n"
-                f"Destination module has {len(dest_traced)} operations: {[type(m).__name__ for m in dest_traced]}"
+                f"Numbers of operations are different. Source module has {len(src_traced)} operations while"
+                f" destination module has {len(dest_traced)}."
             )
 
-        all_transfers_verified = True
-        for i, (dest_m, src_m) in enumerate(zip(dest_traced, src_traced)):
-            print(f"\nTransferring weights for module pair {i+1}:")
-            print(f"Source: {type(src_m).__name__}")
-            print(f"Destination: {type(dest_m).__name__}")
-            
-            if type(src_m) != type(dest_m):
-                print(f"Warning: Module types don't match!")
-            
-            # Transfer weights
+        for dest_m, src_m in zip(dest_traced, src_traced):
             dest_m.load_state_dict(src_m.state_dict())
-            
-            # Verify transfer
-            if not self.verify_weights(src_m, dest_m):
-                print(f"Warning: Weight verification failed for module pair {i+1}")
-                all_transfers_verified = False
-            else:
-                print(f"✓ Weight transfer verified for module pair {i+1}")
-
             if self.verbose == 1:
-                print(f"Transferred from={src_m} to={dest_m}")
-
-        if all_transfers_verified:
-            print("\n✓ All weight transfers verified successfully!")
-        else:
-            print("\n⚠ Some weight transfers could not be verified!")
-            print("This might be due to architectural differences or normalization layers.")
+                print(f"Transfered from={src_m} to={dest_m}")
 
 
 import torchvision.transforms as transforms
@@ -192,19 +122,28 @@ def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory
     print(f"Converting {name}...")
     with torch.no_grad():
         from_model = torch.hub.load('facebookresearch/barlowtwins:main', name)
-        from_model = nn.Sequential(*(list(from_model.children())[:-1])) 
+        #from_model = nn.Sequential(*(list(from_model.children())[:-1])) 
  
-        our_model = BarlowTwinsModel(config=config)
+        our_model = BarlowTwinsForImageClassification(config=config)
 
-        print("barlowtwins architecture:",our_model)
-        print("resnet50 architecture:",from_model)
+
         
         print("from_model paramtere count",count_parameters(from_model))
         print("our_model paramtere count",count_parameters(our_model))
 
 
-        module_transfer = ModuleTransfer(src=from_model, dest=our_model,verbose=1)
+        module_transfer = ModuleTransfer(src=from_model, dest=our_model)
         x = torch.randn((1, 3, 224, 224))
+        module_transfer(x)
+        from_model_outs = from_model(x)
+        our_model_outs = our_model(x).logits
+
+        print("checking for not similarities")
+        print("our_model_out ", our_model_outs[0,:3])
+        print("from_model_out", from_model_outs[0,:3])
+
+        assert torch.allclose(from_model(x), our_model(x).logits), "The model logits don't match the original one."
+    
         processor = AutoImageProcessor.from_pretrained("microsoft/resnet-50")
         from datasets import load_dataset
 
@@ -235,16 +174,16 @@ def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory
         from_model_out = from_model(from_inputs)
         print("from_model_out",from_model_out.size())
         our_model_out = our_model(inputs)
-        print("our_model_out",our_model_out.pooler_output.size())
+        print("our_model_out",our_model_out.logits.size())
 
 
 
 
-        print("our_model_out ", our_model_out.pooler_output)
-        print("from_model_out", from_model_out)
+        print("our_model_out ", our_model_out.logits[0,:3])
+        print("from_model_out", from_model_out[0,:3])
      
     # Use a higher tolerance due to potential differences in implementation
-    assert torch.allclose(from_model_out, our_model_out.pooler_output), "The model logits don't match the original one."
+    assert torch.allclose(from_model_out, our_model_out.logits), "The model logits don't match the original one."
 
     checkpoint_name = f"resnet{'-'.join(name.split('resnet'))}"
     print(checkpoint_name)
@@ -265,7 +204,6 @@ def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory
         )
 
         print(f"Pushed {checkpoint_name}")
-
 
 
 def convert_weights_and_push(save_directory: Path, model_name: str = None, push_to_hub: bool = True):
