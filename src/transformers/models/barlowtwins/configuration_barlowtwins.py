@@ -74,7 +74,7 @@ class BarlowTwinsConfig(BackboneConfigMixin, PretrainedConfig):
 
     >>> # Initializing a BarlowTwins barlowtwins-50 style configuration
     >>> configuration = BarlowTwinsConfig()
-        
+    
     >>> # Initializing a model (with random weights) from the barlowtwins-50 style configuration
     >>> model = BarlowTwinsModel(configuration)
 
