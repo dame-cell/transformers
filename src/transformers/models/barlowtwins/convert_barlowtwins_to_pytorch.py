@@ -122,14 +122,11 @@ def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory
     print(f"Converting {name}...")
     with torch.no_grad():
         from_model = torch.hub.load('facebookresearch/barlowtwins:main', name)
-        #from_model = nn.Sequential(*(list(from_model.children())[:-1])) 
  
         our_model = BarlowTwinsForImageClassification(config=config)
 
 
-        
-        print("from_model paramtere count",count_parameters(from_model))
-        print("our_model paramtere count",count_parameters(our_model))
+
 
 
         module_transfer = ModuleTransfer(src=from_model, dest=our_model)
@@ -138,9 +135,8 @@ def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory
         from_model_outs = from_model(x)
         our_model_outs = our_model(x).logits
 
-        print("checking for not similarities")
-        print("our_model_out ", our_model_outs[0,:3])
-        print("from_model_out", from_model_outs[0,:3])
+ 
+
 
         assert torch.allclose(from_model(x), our_model(x).logits), "The model logits don't match the original one."
     
@@ -151,41 +147,21 @@ def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory
         image = dataset["test"]["image"][0]
         inputs = processor(image, return_tensors="pt").pixel_values
         from_inputs = transform_image(image).unsqueeze(0)
-        # Convert inputs to PyTorch tensor if it's not already
         if not isinstance(inputs, torch.Tensor):
             inputs = torch.tensor(inputs)
-        
-        # Ensure both tensors are on the same device
-        from_inputs = from_inputs.to(inputs.device)
-        
-        print("from_inputs shape:", from_inputs.shape)
-        print("inputs shape:", inputs.shape)
-        
-        # Print some sample values
-        print("Sample values from from_inputs:")
-        print(from_inputs[0, :3, :3, :3])
-        print("Sample values from inputs:")
-        print(inputs[0, :3, :3, :3])
-        
+        from_inputs = from_inputs.to(inputs.device)    
         assert torch.allclose(from_inputs, inputs[0]), "The pixel values do not match somehow"
         
 
 
         from_model_out = from_model(from_inputs)
-        print("from_model_out",from_model_out.size())
         our_model_out = our_model(inputs)
-        print("our_model_out",our_model_out.logits.size())
 
-
-
-
-        print("our_model_out ", our_model_out.logits[0,:3])
-        print("from_model_out", from_model_out[0,:3])
      
     # Use a higher tolerance due to potential differences in implementation
     assert torch.allclose(from_model_out, our_model_out.logits), "The model logits don't match the original one."
 
-    checkpoint_name = f"resnet{'-'.join(name.split('resnet'))}"
+    checkpoint_name = f"Barlowtwins{'-'.join(name.split('resnet'))}"
     print(checkpoint_name)
 
     if push_to_hub:
