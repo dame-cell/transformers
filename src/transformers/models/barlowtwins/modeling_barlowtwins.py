@@ -345,23 +345,12 @@ class BarlowTwinsModel(BarlowTwinsPreTrainedModel):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        
-        print("before embedder of barlowtwins model shape",pixel_values.size())
-        print("before embedder of barlowtwins model ",pixel_values[0, 0 , :3 ,:3])
-
         embedding_output = self.embedder(pixel_values)
-
-
-        print("before  encoder of barlowtwins model shape",embedding_output.size())
-        print("before encoder of barlowtwins model ",embedding_output[0, 0 , :3 ,:3])
         encoder_outputs = self.encoder(
             embedding_output, output_hidden_states=output_hidden_states, return_dict=return_dict
         )
 
         last_hidden_state = encoder_outputs[0]
-        print("last hidden state of barlowtwins model shape",last_hidden_state.size())
-        print("last hidden state of barlowtwins model",last_hidden_state[0, 0 , :3 ,:3])
         pooled_output = self.pooler(last_hidden_state)
 
         if not return_dict:

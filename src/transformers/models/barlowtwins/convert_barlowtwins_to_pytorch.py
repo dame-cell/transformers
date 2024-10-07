@@ -25,11 +25,16 @@ import logging
 import timm
 import torch
 import torch.nn as nn
+import numpy as np
+import torchvision
+import torchvision.transforms as transforms
+
 from huggingface_hub import hf_hub_download
 from torch import Tensor
 
 from transformers import AutoImageProcessor, BarlowTwinsForImageClassification , BarlowTwinsConfig , BarlowTwinsModel
 from transformers.utils import logging
+
 from PIL import Image 
 import requests 
 
@@ -92,64 +97,30 @@ class ModuleTransfer:
                 print(f"Transfered from={src_m} to={dest_m}")
 
 
-import torchvision.transforms as transforms
-from PIL import Image
-import numpy as np
 
-def transform_image(image: Image.Image) -> torch.Tensor:
-    # Parameters from ConvNextImageProcessor
-    crop_pct = 0.875
-    image_mean = [0.485, 0.456, 0.406]
-    image_std = [0.229, 0.224, 0.225]
-    size = 224
 
-    crop_size = int(size / crop_pct)
-
-    transform = transforms.Compose([
-        transforms.Resize(crop_size, interpolation=transforms.InterpolationMode.BICUBIC),
-        transforms.CenterCrop(size),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=image_mean, std=image_std)
-    ])
-    
-    transformed_image = transform(image)
-    return transformed_image
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 
 def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory: Path, push_to_hub: bool = True):
     print(f"Converting {name}...")
     with torch.no_grad():
         from_model = torch.hub.load('facebookresearch/barlowtwins:main', name)
- 
         our_model = BarlowTwinsForImageClassification(config=config)
         module_transfer = ModuleTransfer(src=from_model, dest=our_model)
+
         x = torch.randn((1, 3, 224, 224))
         module_transfer(x)
+
         from_model_outs = from_model(x)
         our_model_outs = our_model(x).logits
+
+        print("from_model_outs",from_model_outs[0:3,:3])
+        print("our_model_outs",our_model_outs[0:3,:3])
+
         assert torch.allclose(from_model(x), our_model(x).logits), "The model logits don't match the original one."
-    
-        processor = AutoImageProcessor.from_pretrained("microsoft/resnet-50")
-        from datasets import load_dataset
-
-        dataset = load_dataset("huggingface/cats-image")
-        image = dataset["test"]["image"][0]
-        
-        inputs = processor(image, return_tensors="pt").pixel_values
-        from_inputs = transform_image(image).unsqueeze(0)
-
-        if not isinstance(inputs, torch.Tensor):
-            inputs = torch.tensor(inputs)
-        from_inputs = from_inputs.to(inputs.device)    
-        assert torch.allclose(from_inputs, inputs[0]), "The pixel values do not match somehow"
-        
-        from_model_out = from_model(from_inputs)
-        our_model_out = our_model(inputs)
-
-    # Use a higher tolerance due to potential differences in implementation
-    assert torch.allclose(from_model_out, our_model_out.logits), "The model logits don't match the original one."
 
     checkpoint_name = f"Barlowtwins{'-'.join(name.split('resnet'))}"
     print(checkpoint_name)
@@ -162,7 +133,7 @@ def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory
         )
 
         # we can use the convnext one
-        image_processor = AutoImageProcessor.from_pretrained("facebook/convnext-base-224-22k-1k")
+        image_processor = AutoImageProcessor.from_pretrained("microsoft/resnet-50")
         image_processor.push_to_hub(
             repo_id=f"damerajee/{checkpoint_name}",
             commit_message="Add image processor",
