@@ -92,8 +92,7 @@ class ModuleTransfer:
 
 
 
-def count_parameters(model):
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 
 
 def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory: Path, push_to_hub: bool = True):
@@ -108,9 +107,6 @@ def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory
 
         from_model_outs = from_model(x)
         our_model_outs = our_model(x).logits
-
-        print("from_model_outs",from_model_outs[0:3,:3])
-        print("our_model_outs",our_model_outs[0:3,:3])
 
         assert torch.allclose(from_model(x), our_model(x).logits), "The model logits don't match the original one."
 
@@ -167,7 +163,7 @@ if __name__ == "__main__":
         type=str,
         help=(
             "The name of the model you wish to convert, it must be one of the supported resnet* architecture,"
-            " currently: resnet18,26,34,50,101,152. If `None`, all of them will the converted."
+            " currently: resnet50. If `None`, all of them will the converted."
         ),
     )
     parser.add_argument(
