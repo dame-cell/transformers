@@ -173,7 +173,9 @@ class BarlowTwinsBottleNeckLayer(nn.Module):
             BarlowTwinsConvLayer(
                 in_channels, reduces_channels, kernel_size=1, stride=stride if downsample_in_bottleneck else 1
             ),
-            BarlowTwinsConvLayer(reduces_channels, reduces_channels, stride=stride if not downsample_in_bottleneck else 1),
+            BarlowTwinsConvLayer(
+                reduces_channels, reduces_channels, stride=stride if not downsample_in_bottleneck else 1
+            ),
             BarlowTwinsConvLayer(reduces_channels, out_channels, kernel_size=1, activation=None),
         )
         self.activation = ACT2FN[activation]
