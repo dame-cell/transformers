@@ -104,10 +104,6 @@ def convert_weight_and_push(name: str, config: BarlowTwinsConfig, save_directory
 
         x = torch.randn((1, 3, 224, 224))
         module_transfer(x)
-
-        from_model_outs = from_model(x)
-        our_model_outs = our_model(x).logits
-
         assert torch.allclose(from_model(x), our_model(x).logits), "The model logits don't match the original one."
 
     checkpoint_name = f"Barlowtwins{'-'.join(name.split('resnet'))}"
