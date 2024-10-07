@@ -262,15 +262,17 @@ class BarlowTwinsModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestC
 
     @slow
     def test_model_from_pretrained(self):
-        model_name = "facebook/barlow-twins-base"
+        model_name = "damerajee/Barlowtwins-50"
         model = BarlowTwinsModel.from_pretrained(model_name)
         self.assertIsNotNone(model)
 
 
 # We will verify our results on an image of cute cats
-from PIL import Image
-import requests
 from io import BytesIO
+
+import requests
+from PIL import Image
+
 
 def prepare_img():
     response = requests.get("https://images.cocodataset.org/val2017/000000039769.jpg")
@@ -283,11 +285,11 @@ def prepare_img():
 class BarlowTwinsModelIntegrationTest(unittest.TestCase):
     @cached_property
     def default_image_processor(self):
-        return AutoImageProcessor.from_pretrained("microsoft/resnet-50") if is_vision_available() else None
+        return AutoImageProcessor.from_pretrained("damerajee/Barlowtwins-50") if is_vision_available() else None
 
     @slow
     def test_inference_image_classification_head(self):
-        model = BarlowTwinsForImageClassification.from_pretrained("damerajee/barlowtwinns").to(torch_device)
+        model = BarlowTwinsForImageClassification.from_pretrained("damerajee/Barlowtwins-50").to(torch_device)
 
         image_processor = self.default_image_processor
         image = prepare_img()

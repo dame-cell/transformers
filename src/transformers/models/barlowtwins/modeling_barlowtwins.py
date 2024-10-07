@@ -57,7 +57,9 @@ _IMAGE_CLASS_EXPECTED_OUTPUT = "tiger cat"
 
 # Copied from transformers.models.resnet.modeling_resnet.ResNetConvLayer with ResNet->BarlowTwins
 class BarlowTwinsConvLayer(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int = 3, stride: int = 1, activation: str = "relu"):
+    def __init__(
+        self, in_channels: int, out_channels: int, kernel_size: int = 3, stride: int = 1, activation: str = "relu"
+    ):
         super().__init__()
         self.convolution = nn.Conv2d(
             in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=kernel_size // 2, bias=False
@@ -146,7 +148,7 @@ class BarlowTwinsBasicLayer(nn.Module):
 # Copied from transformers.models.resnet.modeling_resnet.ResNetBottleNeckLayer with ResNet->BarlowTwins
 class BarlowTwinsBottleNeckLayer(nn.Module):
     """
-    A classic ResNet's bottleneck layer composed by three `3x3` convolutions.
+    A classic BarlowTwins's bottleneck layer composed by three `3x3` convolutions.
 
     The first `1x1` convolution reduces the input by a factor of `reduction` in order to make the second `3x3`
     convolution faster. The last `1x1` convolution remaps the reduced features to `out_channels`. If
@@ -172,7 +174,9 @@ class BarlowTwinsBottleNeckLayer(nn.Module):
             BarlowTwinsConvLayer(
                 in_channels, reduces_channels, kernel_size=1, stride=stride if downsample_in_bottleneck else 1
             ),
-            BarlowTwinsConvLayer(reduces_channels, reduces_channels, stride=stride if not downsample_in_bottleneck else 1),
+            BarlowTwinsConvLayer(
+                reduces_channels, reduces_channels, stride=stride if not downsample_in_bottleneck else 1
+            ),
             BarlowTwinsConvLayer(reduces_channels, out_channels, kernel_size=1, activation=None),
         )
         self.activation = ACT2FN[activation]
@@ -229,8 +233,7 @@ class BarlowTwinsEncoder(nn.Module):
     def __init__(self, config: BarlowTwinsConfig):
         super().__init__()
         self.stages = nn.ModuleList([])
-
-        # Create the first stage, considering downsampling
+        # based on `downsample_in_first_stage` the first layer of the first stage may or may not downsample the input
         self.stages.append(
             BarlowTwinsStage(
                 config,
@@ -240,29 +243,24 @@ class BarlowTwinsEncoder(nn.Module):
                 depth=config.depths[0],
             )
         )
-        
-        # Create the subsequent stages based on hidden_sizes and depths
         in_out_channels = zip(config.hidden_sizes, config.hidden_sizes[1:])
         for (in_channels, out_channels), depth in zip(in_out_channels, config.depths[1:]):
-            self.stages.append(
-                BarlowTwinsStage(config, in_channels, out_channels, depth=depth)
-            )
+            self.stages.append(BarlowTwinsStage(config, in_channels, out_channels, depth=depth))
 
-    def forward(self, hidden_state: Tensor, output_hidden_states: bool = False, return_dict: bool = True) -> BaseModelOutputWithNoAttention:
+    def forward(
+        self, hidden_state: Tensor, output_hidden_states: bool = False, return_dict: bool = True
+    ) -> BaseModelOutputWithNoAttention:
         hidden_states = () if output_hidden_states else None
 
-        # Process the input through each stage
         for stage_module in self.stages:
             if output_hidden_states:
                 hidden_states = hidden_states + (hidden_state,)
 
             hidden_state = stage_module(hidden_state)
 
-        # Capture the final hidden state if outputting hidden states
         if output_hidden_states:
             hidden_states = hidden_states + (hidden_state,)
 
-        # Return results in the desired format
         if not return_dict:
             return tuple(v for v in [hidden_state, hidden_states] if v is not None)
 
@@ -338,6 +336,14 @@ class BarlowTwinsModel(BarlowTwinsPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
+    @add_start_docstrings_to_model_forward(BARLOWTWINS_INPUTS_DOCSTRING)
+    @add_code_sample_docstrings(
+        checkpoint=_CHECKPOINT_FOR_DOC,
+        output_type=BaseModelOutputWithPoolingAndNoAttention,
+        config_class=_CONFIG_FOR_DOC,
+        modality="vision",
+        expected_output=_EXPECTED_OUTPUT_SHAPE,
+    )
     def forward(
         self, pixel_values: Tensor, output_hidden_states: Optional[bool] = None, return_dict: Optional[bool] = None
     ) -> BaseModelOutputWithPoolingAndNoAttention:
@@ -345,12 +351,15 @@ class BarlowTwinsModel(BarlowTwinsPreTrainedModel):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
         embedding_output = self.embedder(pixel_values)
+
         encoder_outputs = self.encoder(
             embedding_output, output_hidden_states=output_hidden_states, return_dict=return_dict
         )
 
         last_hidden_state = encoder_outputs[0]
+
         pooled_output = self.pooler(last_hidden_state)
 
         if not return_dict:

@@ -16,27 +16,19 @@
 
 import argparse
 import json
+import logging
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Tuple
-import logging
+from typing import List
 
-import timm
 import torch
 import torch.nn as nn
-import numpy as np
-import torchvision
-import torchvision.transforms as transforms
-
 from huggingface_hub import hf_hub_download
 from torch import Tensor
 
-from transformers import AutoImageProcessor, BarlowTwinsForImageClassification , BarlowTwinsConfig , BarlowTwinsModel
+from transformers import AutoImageProcessor, BarlowTwinsConfig, BarlowTwinsForImageClassification
 from transformers.utils import logging
-
-from PIL import Image 
-import requests 
 
 
 logging.set_verbosity_info()
@@ -152,7 +144,7 @@ def convert_weights_and_push(save_directory: Path, model_name: str = None, push_
     id2label = json.load(open(hf_hub_download(repo_id, filename, repo_type="dataset"), "r"))
     id2label = {int(k): v for k, v in id2label.items()}
     label2id = {v: k for k, v in id2label.items()}
-    
+
     ImageNetPreTrainedConfig = partial(BarlowTwinsConfig, num_labels=num_labels, id2label=id2label, label2id=label2id)
 
     names_to_config = {
@@ -162,7 +154,7 @@ def convert_weights_and_push(save_directory: Path, model_name: str = None, push_
         ),
     }
 
-    convert_weight_and_push(model_name, names_to_config[model_name], save_directory, push_to_hub)    
+    convert_weight_and_push(model_name, names_to_config[model_name], save_directory, push_to_hub)
     return names_to_config
 
 

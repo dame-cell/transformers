@@ -65,6 +65,7 @@ Flax), PyTorch, and/or TensorFlow.
 | [Audio Spectrogram Transformer](model_doc/audio-spectrogram-transformer) |       ✅        |         ❌         |      ❌      |
 |                    [Autoformer](model_doc/autoformer)                    |       ✅        |         ❌         |      ❌      |
 |                          [Bark](model_doc/bark)                          |       ✅        |         ❌         |      ❌      |
+|                   [BarlowTwins](model_doc/barlowtwins)                   |       ✅        |         ❌         |      ❌      |
 |                          [BART](model_doc/bart)                          |       ✅        |         ✅         |      ✅      |
 |                       [BARThez](model_doc/barthez)                       |       ✅        |         ✅         |      ✅      |
 |                       [BARTpho](model_doc/bartpho)                       |       ✅        |         ✅         |      ✅      |

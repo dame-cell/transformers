@@ -5013,6 +5013,7 @@ if TYPE_CHECKING:
         BarkProcessor,
         BarkSemanticConfig,
     )
+    from .models.barlowtwins import BarlowTwinsConfig
     from .models.bart import BartConfig, BartTokenizer
     from .models.beit import BeitConfig
     from .models.bert import (
@@ -5566,7 +5567,6 @@ if TYPE_CHECKING:
     from .models.regnet import RegNetConfig
     from .models.rembert import RemBertConfig
     from .models.resnet import ResNetConfig
-    from .models.barlowtwins import BarlowTwinsConfig
     from .models.roberta import (
         RobertaConfig,
         RobertaTokenizer,
@@ -6364,6 +6364,12 @@ if TYPE_CHECKING:
             BarkModel,
             BarkPreTrainedModel,
             BarkSemanticModel,
+        )
+        from .models.barlowtwins import (
+            BarlowTwinsBackbone,
+            BarlowTwinsForImageClassification,
+            BarlowTwinsModel,
+            BarlowTwinsPreTrainedModel,
         )
         from .models.bart import (
             BartForCausalLM,
@@ -7692,12 +7698,6 @@ if TYPE_CHECKING:
             ResNetForImageClassification,
             ResNetModel,
             ResNetPreTrainedModel,
-        )
-        from .models.barlowtwins import (
-            BarlowTwinsBackbone,
-            BarlowTwinsForImageClassification,
-            BarlowTwinsModel,
-            BarlowTwinsPreTrainedModel,
         )
         from .models.roberta import (
             RobertaForCausalLM,
