@@ -28,6 +28,7 @@ from ...modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from ...pytorch_utils import ALL_LAYERNORM_LAYERS
 from ...tokenization_utils import AddedToken, PreTrainedTokenizer
 from ...utils import (
+    is_flash_attn_2_available,
     is_torch_greater_or_equal,
     logging,
 )
@@ -47,6 +48,9 @@ if TYPE_CHECKING:
 
 if is_torch_greater_or_equal("2.5"):
     from torch.nn.attention.flex_attention import flex_attention
+
+if is_flash_attn_2_available():
+    from ...modeling_flash_attention_utils import _flash_attention_forward
 
 VOCAB_FILES_NAMES = {"vocab_file": "tokenizer.model"}
 
