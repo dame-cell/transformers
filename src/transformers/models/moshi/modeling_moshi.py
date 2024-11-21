@@ -627,8 +627,8 @@ class MoshiFlashAttention2(MoshiAttention):
         super().__init__(config, layer_idx)
         self.config._attn_implementation = "flash_attention_2"
         logger.warning_once(
-            "The `GemmaFlashAttention` class is deprecated in favor of simply modifying the `config._attn_implementation`"
-            "attribute of the `GemmaAttention` class! It will be removed in v4.48"
+            "The `MoshiFlashAttention` class is deprecated in favor of simply modifying the `config._attn_implementation`"
+            "attribute of the `MoshiAttention` class! It will be removed in v4.48"
         )
 
 
@@ -637,8 +637,8 @@ class MoshiSdpaAttention(MoshiAttention):
         super().__init__(config, layer_idx)
         self.config._attn_implementation = "sdpa"
         logger.warning_once(
-            "The `GemmaFlashAttention` class is deprecated in favor of simply modifying the `config._attn_implementation`"
-            "attribute of the `GemmaAttention` class! It will be removed in v4.48"
+            "The `MoshiFlashAttention` class is deprecated in favor of simply modifying the `config._attn_implementation`"
+            "attribute of the `MoshiAttention` class! It will be removed in v4.48"
         )
 
 

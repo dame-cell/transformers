@@ -655,8 +655,8 @@ class MimiFlashAttention2(MimiAttention):
         super().__init__(config, layer_idx)
         self.config._attn_implementation = "flash_attention_2"
         logger.warning_once(
-            "The `GemmaFlashAttention` class is deprecated in favor of simply modifying the `config._attn_implementation`"
-            "attribute of the `GemmaAttention` class! It will be removed in v4.48"
+            "The `MimiFlashAttention` class is deprecated in favor of simply modifying the `config._attn_implementation`"
+            "attribute of the `MimiAttention` class! It will be removed in v4.48"
         )
 
 
@@ -665,8 +665,8 @@ class MimiSdpaAttention(MimiAttention):
         super().__init__(config, layer_idx)
         self.config._attn_implementation = "sdpa"
         logger.warning_once(
-            "The `GemmaFlashAttention` class is deprecated in favor of simply modifying the `config._attn_implementation`"
-            "attribute of the `GemmaAttention` class! It will be removed in v4.48"
+            "The `MimiFlashAttention` class is deprecated in favor of simply modifying the `config._attn_implementation`"
+            "attribute of the `MimiAttention` class! It will be removed in v4.48"
         )
 
 
