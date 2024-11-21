@@ -13,7 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import math
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import sentencepiece as spm
@@ -22,21 +21,17 @@ import torch.utils.checkpoint
 from torch import nn
 
 from ...activations import ACT2FN
-from ...cache_utils import Cache, DynamicCache, StaticCache
+from ...cache_utils import Cache, DynamicCache
 from ...configuration_utils import PretrainedConfig
 from ...modeling_flash_attention_utils import _flash_attention_forward
 from ...modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from ...pytorch_utils import ALL_LAYERNORM_LAYERS
 from ...tokenization_utils import AddedToken, PreTrainedTokenizer
 from ...utils import (
-    is_flash_attn_2_available,
-    is_flash_attn_greater_or_equal,
     is_torch_greater_or_equal,
     logging,
 )
 from ..llama.modeling_llama import (
-    LlamaDecoderLayer,
-    LlamaFlashAttention2,
     LlamaForCausalLM,
     LlamaForSequenceClassification,
     LlamaForTokenClassification,
@@ -447,7 +442,7 @@ def eager_attention_forward(config, query, key, value, mask, **_kwargs):
     key_states = repeat_kv(key, config.num_key_value_groups)
     value_states = repeat_kv(value, config.num_key_value_groups)
 
-    attn_weights = torch.matmul(query, key_states.transpose(2, 3)) 
+    attn_weights = torch.matmul(query, key_states.transpose(2, 3))
 
     if mask is not None:  # no matter the length, we just slice it
         causal_mask = mask[:, :, :, : key_states.shape[-2]]
@@ -496,8 +491,7 @@ def flash_attention_forward(config, query, key, value, mask, target_dtype=torch.
     return attn_output, None
 
 
-
-def flex_attention_forward(config, query, key, value,output_attentions=False, **_kwargs):
+def flex_attention_forward(config, query, key, value, output_attentions=False, **_kwargs):
     attn_output = flex_attention(
         query,
         key,
@@ -616,7 +610,6 @@ class GemmaAttention(nn.Module):
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
         if output_attentions and self.config._attn_implementation in ["sdpa", "flash_attention_2"]:
-
             logger.warning_once("Setting `attention_type` to `flex_attention` because `output_attentions=True`")
             attention_type = "eager"
         else:
@@ -655,9 +648,6 @@ class GemmaSdpaAttention(GemmaAttention):
         )
 
 
-
-
-
 class GemmaDecoderLayer(nn.Module):
     def __init__(self, config: GemmaConfig, layer_idx: int):
         super().__init__()
@@ -668,7 +658,6 @@ class GemmaDecoderLayer(nn.Module):
         self.input_layernorm = GemmaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = GemmaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
-    
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -680,7 +669,6 @@ class GemmaDecoderLayer(nn.Module):
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-        
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
 

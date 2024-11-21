@@ -20,9 +20,8 @@ import unittest
 import pytest
 from packaging import version
 
-from transformers import AutoModelForCausalLM, AutoTokenizer, GemmaConfig, is_torch_available
+from transformers import AutoModelForCausalLM, AutoTokenizer, GemmaConfig, is_torch_available, pipeline
 from transformers.generation.configuration_utils import GenerationConfig
-from transformers import pipeline 
 from transformers.testing_utils import (
     is_flaky,
     require_bitsandbytes,
@@ -569,8 +568,6 @@ class GemmaIntegrationTest(unittest.TestCase):
         self.assertEqual(output[0][0]["generated_text"], EXPECTED_TEXTS[0])
         self.assertEqual(output[1][0]["generated_text"], EXPECTED_TEXTS[1])
 
-    
- 
     @require_read_token
     def test_model_2b_pipeline_bf16_flex_attention(self):
         # See https://github.com/huggingface/transformers/pull/31747 -- pipeline was broken for Gemma2 before this PR
@@ -591,7 +588,6 @@ class GemmaIntegrationTest(unittest.TestCase):
 
         self.assertEqual(output[0][0]["generated_text"], EXPECTED_TEXTS[0])
         self.assertEqual(output[1][0]["generated_text"], EXPECTED_TEXTS[1])
-
 
     @require_read_token
     def test_model_2b_eager(self):
