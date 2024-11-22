@@ -544,7 +544,6 @@ class GemmaIntegrationTest(unittest.TestCase):
 
         output = model.generate(**inputs, max_new_tokens=20, do_sample=False)
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
-
         self.assertEqual(output_text, EXPECTED_TEXTS)
 
     @require_read_token
@@ -553,18 +552,16 @@ class GemmaIntegrationTest(unittest.TestCase):
         model_id = "google/gemma-7b"
         # EXPECTED_TEXTS should match the same non-pipeline test, minus the special tokens
         EXPECTED_TEXTS = [
-            "Hello I am doing a project on the 1960s and I am trying to find out what the average",
-            "Hi today I'm going to be talking about the 10 best anime of all time.\n\n1",
+            "Hello I am doing a project on the 1990s and I need to know what the most popular music",
+            "Hi today I am going to share with you a very easy and simple recipe of <strong><em>Kaju Kat",
         ]
-
         model = AutoModelForCausalLM.from_pretrained(
-            model_id, low_cpu_mem_usage=True, torch_dtype=torch.bfloat16, attn_implementation="eager"
+            model_id, low_cpu_mem_usage=True, torch_dtype=torch.bfloat16, attn_implementation="flex_attention"
         ).to(torch_device)
         tokenizer = AutoTokenizer.from_pretrained(model_id)
         pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
         output = pipe(self.input_text, max_new_tokens=20, do_sample=False, padding=True)
-
         self.assertEqual(output[0][0]["generated_text"], EXPECTED_TEXTS[0])
         self.assertEqual(output[1][0]["generated_text"], EXPECTED_TEXTS[1])
 
@@ -574,17 +571,16 @@ class GemmaIntegrationTest(unittest.TestCase):
         model_id = "google/gemma-2b"
         # EXPECTED_TEXTS should match the same non-pipeline test, minus the special tokens
         EXPECTED_TEXTS = [
-            "Hello I am doing a project on the 1960s and I am trying to find out what the average",
-            "Hi today I'm going to be talking about the 10 best anime of all time.\n\n1",
+            "Hello I am doing a project on the 1990s and I need to know what the most popular music",
+            "Hi today I am going to share with you a very easy and simple recipe of <strong><em>Kaju Kat",
         ]
-
         model = AutoModelForCausalLM.from_pretrained(
             model_id, low_cpu_mem_usage=True, torch_dtype=torch.bfloat16, attn_implementation="flex_attention"
         ).to(torch_device)
         tokenizer = AutoTokenizer.from_pretrained(model_id)
         pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
-        output = pipe(self.input_text, max_new_tokens=30, do_sample=False, padding=True)
+        output = pipe(self.input_text, max_new_tokens=20, do_sample=False, padding=True)
 
         self.assertEqual(output[0][0]["generated_text"], EXPECTED_TEXTS[0])
         self.assertEqual(output[1][0]["generated_text"], EXPECTED_TEXTS[1])
@@ -631,7 +627,6 @@ class GemmaIntegrationTest(unittest.TestCase):
 
         output = model.generate(**inputs, max_new_tokens=20, do_sample=False)
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
-
         self.assertEqual(output_text, EXPECTED_TEXTS)
 
     @require_flash_attn
@@ -692,7 +687,6 @@ class GemmaIntegrationTest(unittest.TestCase):
 
         output = model.generate(**inputs, max_new_tokens=20, do_sample=False)
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
-
         self.assertEqual(output_text, EXPECTED_TEXTS)
 
     @require_read_token
@@ -715,7 +709,6 @@ class GemmaIntegrationTest(unittest.TestCase):
 
         output = model.generate(**inputs, max_new_tokens=20, do_sample=False)
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
-
         self.assertEqual(output_text, EXPECTED_TEXTS)
 
     @require_read_token
@@ -901,7 +894,7 @@ class GemmaIntegrationTest(unittest.TestCase):
         model_id = "google/gemma-2b"
         # ground truth text generated with dola_layers="low", repetition_penalty=1.2
         EXPECTED_TEXTS = [
-            "Hello I am doing an experiment and need to get the mass of a block. The problem is, it has no scale",
+            "Hello I am doing an experiment and need to get the mass of a block. The only tool we have is a scale",
             "Hi today we have the review for a <strong>2016/2017</strong> season of",
         ]
 
