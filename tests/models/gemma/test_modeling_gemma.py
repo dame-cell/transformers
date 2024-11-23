@@ -552,8 +552,8 @@ class GemmaIntegrationTest(unittest.TestCase):
         model_id = "google/gemma-7b"
         # EXPECTED_TEXTS should match the same non-pipeline test, minus the special tokens
         EXPECTED_TEXTS = [
-            "Hello I am doing a project on the 1990s and I need to know what the most popular music",
-            "Hi today I am going to share with you a very easy and simple recipe of <strong><em>Kaju Kat",
+            "Hello I am doing a little bit of research on the topic of the <strong><em>The 2020-",
+            "Hi today I am going to be honest, I’m not sure if you’ve ever heard of the",
         ]
         model = AutoModelForCausalLM.from_pretrained(
             model_id, low_cpu_mem_usage=True, torch_dtype=torch.bfloat16, attn_implementation="flex_attention"
@@ -571,8 +571,8 @@ class GemmaIntegrationTest(unittest.TestCase):
         model_id = "google/gemma-2b"
         # EXPECTED_TEXTS should match the same non-pipeline test, minus the special tokens
         EXPECTED_TEXTS = [
-            "Hello I am doing a project on the 1990s and I need to know what the most popular music",
-            "Hi today I am going to share with you a very easy and simple recipe of <strong><em>Kaju Kat",
+            "Hello I am doing a little bit of research on the topic of the <strong><em>The 2020-",
+            "Hi today I am going to be honest, I’m not sure if you’ve ever heard of the",
         ]
         model = AutoModelForCausalLM.from_pretrained(
             model_id, low_cpu_mem_usage=True, torch_dtype=torch.bfloat16, attn_implementation="flex_attention"
@@ -581,7 +581,6 @@ class GemmaIntegrationTest(unittest.TestCase):
         pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
         output = pipe(self.input_text, max_new_tokens=20, do_sample=False, padding=True)
-
         self.assertEqual(output[0][0]["generated_text"], EXPECTED_TEXTS[0])
         self.assertEqual(output[1][0]["generated_text"], EXPECTED_TEXTS[1])
 
@@ -590,8 +589,8 @@ class GemmaIntegrationTest(unittest.TestCase):
         model_id = "google/gemma-2b"
 
         EXPECTED_TEXTS = [
-            "Hello I am doing a project on the 1990s and I need to know what the most popular music",
-            "Hi today I am going to share with you a very easy and simple recipe of <strong><em>Khichdi",
+            "Hello I am doing a little bit of research on the topic of the 2019-01-0",
+            "Hi today I am going to be honest, I'm not sure if you've ever heard of a",
         ]
 
         model = AutoModelForCausalLM.from_pretrained(
@@ -604,7 +603,6 @@ class GemmaIntegrationTest(unittest.TestCase):
 
         output = model.generate(**inputs, max_new_tokens=20, do_sample=False)
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
-
         self.assertEqual(output_text, EXPECTED_TEXTS)
 
     @require_torch_sdpa
