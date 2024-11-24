@@ -544,53 +544,16 @@ class GemmaIntegrationTest(unittest.TestCase):
 
         output = model.generate(**inputs, max_new_tokens=20, do_sample=False)
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
+
         self.assertEqual(output_text, EXPECTED_TEXTS)
-
-    @require_read_token
-    def test_model_7b_pipeline_bf16_flex_attention(self):
-        # See https://github.com/huggingface/transformers/pull/31747 -- pipeline was broken for Gemma2 before this PR
-        model_id = "google/gemma-7b"
-        # EXPECTED_TEXTS should match the same non-pipeline test, minus the special tokens
-        EXPECTED_TEXTS = [
-            "Hello I am doing a little bit of research on the topic of the <strong><em>The 2020-",
-            "Hi today I am going to be honest, I’m not sure if you’ve ever heard of the",
-        ]
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id, low_cpu_mem_usage=True, torch_dtype=torch.bfloat16, attn_implementation="flex_attention"
-        ).to(torch_device)
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
-        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
-
-        output = pipe(self.input_text, max_new_tokens=20, do_sample=False, padding=True)
-        self.assertEqual(output[0][0]["generated_text"], EXPECTED_TEXTS[0])
-        self.assertEqual(output[1][0]["generated_text"], EXPECTED_TEXTS[1])
-
-    @require_read_token
-    def test_model_2b_pipeline_bf16_flex_attention(self):
-        # See https://github.com/huggingface/transformers/pull/31747 -- pipeline was broken for Gemma2 before this PR
-        model_id = "google/gemma-2b"
-        # EXPECTED_TEXTS should match the same non-pipeline test, minus the special tokens
-        EXPECTED_TEXTS = [
-            "Hello I am doing a little bit of research on the topic of the <strong><em>The 2020-",
-            "Hi today I am going to be honest, I’m not sure if you’ve ever heard of the",
-        ]
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id, low_cpu_mem_usage=True, torch_dtype=torch.bfloat16, attn_implementation="flex_attention"
-        ).to(torch_device)
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
-        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
-
-        output = pipe(self.input_text, max_new_tokens=20, do_sample=False, padding=True)
-        self.assertEqual(output[0][0]["generated_text"], EXPECTED_TEXTS[0])
-        self.assertEqual(output[1][0]["generated_text"], EXPECTED_TEXTS[1])
 
     @require_read_token
     def test_model_2b_eager(self):
         model_id = "google/gemma-2b"
 
         EXPECTED_TEXTS = [
-            "Hello I am doing a little bit of research on the topic of the 2019-01-0",
-            "Hi today I am going to be honest, I'm not sure if you've ever heard of a",
+            "Hello I am doing a lot of research on this topic.\n\nHello,\n\nI have been a member of the ",
+            "Hi today I am going to be honest, I'm not sure if this is a good thing or not",
         ]
 
         model = AutoModelForCausalLM.from_pretrained(
@@ -603,6 +566,7 @@ class GemmaIntegrationTest(unittest.TestCase):
 
         output = model.generate(**inputs, max_new_tokens=20, do_sample=False)
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
+
         self.assertEqual(output_text, EXPECTED_TEXTS)
 
     @require_torch_sdpa
@@ -625,6 +589,7 @@ class GemmaIntegrationTest(unittest.TestCase):
 
         output = model.generate(**inputs, max_new_tokens=20, do_sample=False)
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
+
         self.assertEqual(output_text, EXPECTED_TEXTS)
 
     @require_flash_attn
@@ -649,6 +614,44 @@ class GemmaIntegrationTest(unittest.TestCase):
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
 
         self.assertEqual(output_text, EXPECTED_TEXTS)
+
+    @require_read_token
+    def test_model_2b_pipeline_flex_attention(self):
+        # See https://github.com/huggingface/transformers/pull/31747 -- pipeline was broken for Gemma2 before this PR
+        model_id = "google/gemma-2b"
+        # EXPECTED_TEXTS should match the same non-pipeline test, minus the special tokens
+        EXPECTED_TEXTS = [
+            "Hello I am doing a little research on the subject of the 2019-01-09",
+            "Hi today I am going to be honest, I’m not sure if you’ve ever heard of the",
+        ]
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id, low_cpu_mem_usage=True, attn_implementation="flex_attention"
+        ).to(torch_device)
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
+
+        output = pipe(self.input_text, max_new_tokens=20, do_sample=False, padding=True)
+        self.assertEqual(output[0][0]["generated_text"], EXPECTED_TEXTS[0])
+        self.assertEqual(output[1][0]["generated_text"], EXPECTED_TEXTS[1])
+
+    @require_read_token
+    def test_model_7b_pipeline_flex_attention(self):
+        # See https://github.com/huggingface/transformers/pull/31747 -- pipeline was broken for Gemma2 before this PR
+        model_id = "google/gemma-7b"
+        # EXPECTED_TEXTS should match the same non-pipeline test, minus the special tokens
+        EXPECTED_TEXTS = [
+            "Hello I am doing a little research on the subject of the 2019-01-09",
+            "Hi today I am going to be honest, I’m not sure if you’ve ever heard of the",
+        ]
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id, low_cpu_mem_usage=True, attn_implementation="flex_attention"
+        ).to(torch_device)
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
+
+        output = pipe(self.input_text, max_new_tokens=20, do_sample=False, padding=True)
+        self.assertEqual(output[0][0]["generated_text"], EXPECTED_TEXTS[0])
+        self.assertEqual(output[1][0]["generated_text"], EXPECTED_TEXTS[1])
 
     @require_bitsandbytes
     @require_read_token
@@ -685,6 +688,7 @@ class GemmaIntegrationTest(unittest.TestCase):
 
         output = model.generate(**inputs, max_new_tokens=20, do_sample=False)
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
+
         self.assertEqual(output_text, EXPECTED_TEXTS)
 
     @require_read_token
@@ -707,6 +711,7 @@ class GemmaIntegrationTest(unittest.TestCase):
 
         output = model.generate(**inputs, max_new_tokens=20, do_sample=False)
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
+
         self.assertEqual(output_text, EXPECTED_TEXTS)
 
     @require_read_token
@@ -892,7 +897,7 @@ class GemmaIntegrationTest(unittest.TestCase):
         model_id = "google/gemma-2b"
         # ground truth text generated with dola_layers="low", repetition_penalty=1.2
         EXPECTED_TEXTS = [
-            "Hello I am doing an experiment and need to get the mass of a block. The only tool we have is a scale",
+            "Hello I am doing an experiment and need to get the mass of a block. The problem is, it has no scale",
             "Hi today we have the review for a <strong>2016/2017</strong> season of",
         ]
 
