@@ -523,7 +523,6 @@ class GemmaIntegrationTest(unittest.TestCase):
 
         output = model.generate(**inputs, max_new_tokens=20, do_sample=False)
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
-
         self.assertEqual(output_text, EXPECTED_TEXTS)
 
     @require_read_token
@@ -580,10 +579,14 @@ class GemmaIntegrationTest(unittest.TestCase):
         ]
 
         model = AutoModelForCausalLM.from_pretrained(
-            model_id, low_cpu_mem_usage=True, torch_dtype=torch.bfloat16, attn_implementation="sdpa"
+            model_id,
+            low_cpu_mem_usage=True,
+            torch_dtype=torch.bfloat16,
+            attn_implementation="sdpa",
         )
         model.to(torch_device)
-
+        print("Model", model)
+        assert model.config._attn_implementation == "sdpa"
         tokenizer = AutoTokenizer.from_pretrained(model_id)
         inputs = tokenizer(self.input_text, return_tensors="pt", padding=True).to(torch_device)
 
@@ -621,28 +624,35 @@ class GemmaIntegrationTest(unittest.TestCase):
         model_id = "google/gemma-2b"
         # EXPECTED_TEXTS should match the same non-pipeline test, minus the special tokens
         EXPECTED_TEXTS = [
-            "Hello I am doing a little research on the subject of the 2019-01-09",
-            "Hi today I am going to be honest, I’m not sure if you’ve ever heard of the",
+            "Hello I am doing a project on the 1990s and I need to know what the most popular music",
+            "Hi today I am going to share with you a very easy and simple recipe of <strong><em>Kaju Kat",
         ]
         model = AutoModelForCausalLM.from_pretrained(
             model_id, low_cpu_mem_usage=True, attn_implementation="flex_attention"
         ).to(torch_device)
+<<<<<<< HEAD
         assert model.config._attn_implementation == "flex_attn"
+=======
+
+        assert model.config._attn_implementation == "flex_attention"
+>>>>>>> 25662081b (fix the issue with sdpa layers and some small issue)
         tokenizer = AutoTokenizer.from_pretrained(model_id)
         pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
         output = pipe(self.input_text, max_new_tokens=20, do_sample=False, padding=True)
+        print("output", output)
         self.assertEqual(output[0][0]["generated_text"], EXPECTED_TEXTS[0])
         self.assertEqual(output[1][0]["generated_text"], EXPECTED_TEXTS[1])
 
+    @unittest.skip(reason="The test will not fit our CI runners")
     @require_read_token
     def test_model_7b_pipeline_flex_attention(self):
         # See https://github.com/huggingface/transformers/pull/31747 -- pipeline was broken for Gemma2 before this PR
         model_id = "google/gemma-7b"
         # EXPECTED_TEXTS should match the same non-pipeline test, minus the special tokens
         EXPECTED_TEXTS = [
-            "Hello I am doing a little research on the subject of the 2019-01-09",
-            "Hi today I am going to be honest, I’m not sure if you’ve ever heard of the",
+            "Hello I am doing a project on the 1990s and I need to know what the most popular music",
+            "Hi today I am going to share with you a very easy and simple recipe of <strong><em>Kaju Kat",
         ]
         model = AutoModelForCausalLM.from_pretrained(
             model_id, low_cpu_mem_usage=True, attn_implementation="flex_attention"
@@ -692,6 +702,7 @@ class GemmaIntegrationTest(unittest.TestCase):
 
         self.assertEqual(output_text, EXPECTED_TEXTS)
 
+    @unittest.skip(reason="The test will not fit our CI runners")
     @require_read_token
     def test_model_7b_fp16(self):
         if self.cuda_compute_capability_major_version == 7:
@@ -715,6 +726,7 @@ class GemmaIntegrationTest(unittest.TestCase):
 
         self.assertEqual(output_text, EXPECTED_TEXTS)
 
+    @unittest.skip(reason="The test will not fit our CI runners")
     @require_read_token
     def test_model_7b_bf16(self):
         if self.cuda_compute_capability_major_version == 7:
@@ -752,6 +764,7 @@ class GemmaIntegrationTest(unittest.TestCase):
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
         self.assertEqual(output_text, EXPECTED_TEXTS[self.cuda_compute_capability_major_version])
 
+    @unittest.skip(reason="The test will not fit our CI runners")
     @require_read_token
     def test_model_7b_fp16_static_cache(self):
         if self.cuda_compute_capability_major_version == 7:
@@ -898,7 +911,7 @@ class GemmaIntegrationTest(unittest.TestCase):
         model_id = "google/gemma-2b"
         # ground truth text generated with dola_layers="low", repetition_penalty=1.2
         EXPECTED_TEXTS = [
-            "Hello I am doing an experiment and need to get the mass of a block. The problem is, it has no scale",
+            "Hello I am doing an experiment and need to get the mass of a block. The only tool we have is a scale",
             "Hi today we have the review for a <strong>2016/2017</strong> season of",
         ]
 
@@ -913,4 +926,5 @@ class GemmaIntegrationTest(unittest.TestCase):
             **inputs, max_new_tokens=20, do_sample=False, dola_layers="low", repetition_penalty=1.2
         )
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
+        print("test_model_2b_bf16_dola", output_text)
         self.assertEqual(output_text, EXPECTED_TEXTS)

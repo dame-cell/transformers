@@ -13,7 +13,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+<<<<<<< HEAD
 import math 
+=======
+import math
+>>>>>>> 25662081b (fix the issue with sdpa layers and some small issue)
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import sentencepiece as spm
@@ -443,7 +447,11 @@ class GemmaMLP(nn.Module):
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
 
+<<<<<<< HEAD
 def eager_attention_forward(config, groups,query, key, value, attention_mask,training, scaling, **_kwargs):
+=======
+def eager_attention_forward(config, groups, query, key, value, attention_mask, scaling, **_kwargs):
+>>>>>>> 25662081b (fix the issue with sdpa layers and some small issue)
     key_states = repeat_kv(key, groups)
     value_states = repeat_kv(value, groups)
 
@@ -461,7 +469,11 @@ def eager_attention_forward(config, groups,query, key, value, attention_mask,tra
     return attn_output, attn_weights
 
 
+<<<<<<< HEAD
 def flash_attention_forward(config, query, key, value, attention_mask, scaling, target_dtype=torch.float16, training,**_kwargs):
+=======
+def flash_attention_forward(config, query, key, value, attention_mask, scaling, target_dtype=torch.float16, **_kwargs):
+>>>>>>> 25662081b (fix the issue with sdpa layers and some small issue)
     if attention_mask is not None:
         seq_len = attention_mask.shape[1]
         query = query[:, :, :seq_len]
@@ -497,6 +509,7 @@ def flash_attention_forward(config, query, key, value, attention_mask, scaling, 
     return attn_output, None
 
 
+<<<<<<< HEAD
 
 
 def flex_attention_forward(
@@ -504,6 +517,10 @@ def flex_attention_forward(
 ):
     causal_mask_exists = attention_mask is not None
   
+=======
+def flex_attention_forward(query, key, value, attention_mask, output_attentions=False, **_kwargs):
+    causal_mask_exists = attention_mask is not None
+>>>>>>> 25662081b (fix the issue with sdpa layers and some small issue)
 
     causal_mask = attention_mask
     if causal_mask_exists:
@@ -531,7 +548,11 @@ def flex_attention_forward(
         return attn_output[0], attn_output[1]
 
 
+<<<<<<< HEAD
 def sdpa_attention_forward(config, query, key, value, attention_mask,training, **_kwargs):
+=======
+def sdpa_attention_forward(config, query, key, value, attention_mask, **_kwargs):
+>>>>>>> 25662081b (fix the issue with sdpa layers and some small issue)
     key = repeat_kv(key, config.num_key_value_groups)
     value = repeat_kv(value, config.num_key_value_groups)
 
@@ -558,7 +579,11 @@ def sdpa_attention_forward(config, query, key, value, attention_mask,training, *
         dropout_p=config.attention_dropout if training else 0.0,
         is_causal=is_causal,
     )
+<<<<<<< HEAD
     attn_output = attn_output.transpose(1,2)
+=======
+    attn_output = attn_output.transpose(1, 2)
+>>>>>>> 25662081b (fix the issue with sdpa layers and some small issue)
     return attn_output, None
 
 
@@ -658,7 +683,13 @@ class GemmaAttention(nn.Module):
             )
             attention_type = "eager"
 
+            logger.warning_once(
+                f"Setting `attention_type` to `eager` because `dropout` is not supported in {attention_type}"
+            )
+            attention_type = "eager"
+
         attn_output, attn_weights = GEMMA_ATTENTION_FUNCTION[attention_type](
+<<<<<<< HEAD
             self, 
             query = query_states, 
             key=key_states, 
@@ -669,6 +700,18 @@ class GemmaAttention(nn.Module):
             target_dtype=torch.float16,
             training=self.training,
             output_attentions=output_attentions
+=======
+            self,
+            query=query_states,
+            key=key_states,
+            value=value_states,
+            scaling=self.scaling,
+            groups=self.num_key_value_groups,
+            attention_mask=attention_mask,
+            target_dtype=torch.float16,
+            training=self.training,
+            output_attentions=output_attentions,
+>>>>>>> 25662081b (fix the issue with sdpa layers and some small issue)
         )
 
         attn_output = attn_output.contiguous()
@@ -696,7 +739,7 @@ class GemmaSdpaAttention(GemmaAttention):
         super().__init__(config, layer_idx)
         self.config._attn_implementation = "sdpa"
         logger.warning_once(
-            "The `GemmaFlashAttention` class is deprecated in favor of simply modifying the `config._attn_implementation`"
+            "The `GemmaFlashAttention2` class is deprecated in favor of simply modifying the `config._attn_implementation`"
             "attribute of the `GemmaAttention` class! It will be removed in v4.48"
         )
 

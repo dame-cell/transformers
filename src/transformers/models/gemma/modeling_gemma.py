@@ -19,6 +19,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import math
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -207,9 +208,9 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
 
-def eager_attention_forward(config, groups,query, key, value, attention_mask,training, scaling, **_kwargs):
-    key_states = repeat_kv(key, groups)
-    value_states = repeat_kv(value, groups)
+def eager_attention_forward(config, query, key, value, mask, **_kwargs):
+    key_states = repeat_kv(key, config.num_key_value_groups)
+    value_states = repeat_kv(value, config.num_key_value_groups)
 
     attn_weights = torch.matmul(query, key_states.transpose(2, 3)) * scaling
 
@@ -225,9 +226,9 @@ def eager_attention_forward(config, groups,query, key, value, attention_mask,tra
     return attn_output, attn_weights
 
 
-def flash_attention_forward(config, query, key, value, attention_mask, scaling, target_dtype=torch.float16, training,**_kwargs):
-    if attention_mask is not None:
-        seq_len = attention_mask.shape[1]
+def flash_attention_forward(config, query, key, value, mask, target_dtype=torch.float16, **_kwargs):
+    if mask is not None:
+        seq_len = mask.shape[1]
         query = query[:, :, :seq_len]
         value = value[:, :, :seq_len]
 
@@ -261,23 +262,7 @@ def flash_attention_forward(config, query, key, value, attention_mask, scaling, 
     return attn_output, None
 
 
-
-
-def flex_attention_forward(
-    query, key, value, attention_mask,  output_attentions=False, **_kwargs
-):
-    causal_mask_exists = attention_mask is not None
-  
-
-    causal_mask = attention_mask
-    if causal_mask_exists:
-        causal_mask = causal_mask[:, :, :, : key.shape[-2]]
-
-    def causal_mod(score, b, h, q_idx, kv_idx):
-        if causal_mask_exists:
-            score += causal_mask[b][0][q_idx][kv_idx]
-        return score
-
+def flex_attention_forward(config, query, key, value, output_attentions=False, **_kwargs):
     attn_output = flex_attention(
         query,
         key,
@@ -295,7 +280,7 @@ def flex_attention_forward(
         return attn_output[0], attn_output[1]
 
 
-def sdpa_attention_forward(config, query, key, value, attention_mask,training, **_kwargs):
+def sdpa_attention_forward(config, query, key, value, mask, **_kwargs):
     key = repeat_kv(key, config.num_key_value_groups)
     value = repeat_kv(value, config.num_key_value_groups)
 
@@ -322,7 +307,6 @@ def sdpa_attention_forward(config, query, key, value, attention_mask,training, *
         dropout_p=config.attention_dropout if training else 0.0,
         is_causal=is_causal,
     )
-    attn_output = attn_output.transpose(1,2)
     return attn_output, None
 
 
@@ -422,17 +406,18 @@ class GemmaAttention(nn.Module):
             )
             attention_type = "eager"
 
+        if (
+            self.training
+            and self.config.attention_dropout > 0
+            and self.config._attn_implementation == "flex_attention"
+        ):
+            logger.warning_once(
+                f"Setting `attention_type` to `eager` because `dropout` is not supported in {attention_type}"
+            )
+            attention_type = "eager"
+
         attn_output, attn_weights = GEMMA_ATTENTION_FUNCTION[attention_type](
-            self, 
-            query = query_states, 
-            key=key_states, 
-            value = value_states, 
-            scaling=self.scaling,
-            groups = self.num_key_value_groups,
-            attention_mask=attention_mask,
-            target_dtype=torch.float16,
-            training=self.training,
-            output_attentions=output_attentions
+            self, query_states, key_states, value_states, attention_mask, output_attentions=output_attentions
         )
 
         attn_output = attn_output.contiguous()
@@ -551,6 +536,7 @@ class GemmaPreTrainedModel(PreTrainedModel):
     _supports_cache_class = True
     _supports_quantized_cache = True
     _supports_static_cache = True
+    _supports_flex_attn = is_torch_greater_or_equal("2.5")
 
     def _init_weights(self, module):
         std = self.config.initializer_range
@@ -606,7 +592,7 @@ GEMMA_INPUTS_DOCSTRING = r"""
 
             Two formats are allowed:
             - a [`~cache_utils.Cache`] instance, see our
-            [kv cache guide](https://huggingface.co/docs/transformers/en/kv_cache);
+            [kv cache guide](https://huggingface.co/docs/transformers/en/kv_cache#legacy-cache-format);
             - Tuple of `tuple(torch.FloatTensor)` of length `config.n_layers`, with each tuple having 2 tensors of
             shape `(batch_size, num_heads, sequence_length, embed_size_per_head)`). This is also known as the legacy
             cache format.
