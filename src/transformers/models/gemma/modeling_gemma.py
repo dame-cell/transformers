@@ -262,10 +262,7 @@ def flash_attention_forward(config, query, key, value, attention_mask, scaling, 
     return attn_output, None
 
 
-def flex_attention_forward(config, query, key, value, attention_mask, output_attentions=False, **_kwargs):
-    """
-    Implements attention using PyTorch's flex_attention.
-    """
+def flex_attention_forward(query, key, value, attention_mask, output_attentions=False, **_kwargs):
     causal_mask_exists = attention_mask is not None
 
     causal_mask = attention_mask
@@ -276,10 +273,6 @@ def flex_attention_forward(config, query, key, value, attention_mask, output_att
         if causal_mask_exists:
             score += causal_mask[b][0][q_idx][kv_idx]
         return score
-
-    # Ensure key and value are repeated for grouped query attention
-    key = repeat_kv(key, config.num_key_value_groups)
-    value = repeat_kv(value, config.num_key_value_groups)
 
     attn_output = flex_attention(
         query,
@@ -415,11 +408,6 @@ class GemmaAttention(nn.Module):
         else:
             attention_type = self.config._attn_implementation
 
-        if (
-            self.training
-            and self.config.attention_dropout > 0
-            and self.config._attn_implementation == "flex_attention"
-        ):
             logger.warning_once(
                 f"Setting `attention_type` to `eager` because `dropout` is not supported in {attention_type}"
             )
@@ -434,6 +422,7 @@ class GemmaAttention(nn.Module):
             groups=self.num_key_value_groups,
             attention_mask=attention_mask,
             target_dtype=torch.float16,
+            training=self.training,
             output_attentions=output_attentions,
         )
 
@@ -462,7 +451,7 @@ class GemmaSdpaAttention(GemmaAttention):
         super().__init__(config, layer_idx)
         self.config._attn_implementation = "sdpa"
         logger.warning_once(
-            "The `GemmaFlashAttention` class is deprecated in favor of simply modifying the `config._attn_implementation`"
+            "The `GemmaFlashAttention2` class is deprecated in favor of simply modifying the `config._attn_implementation`"
             "attribute of the `GemmaAttention` class! It will be removed in v4.48"
         )
 
@@ -553,7 +542,6 @@ class GemmaPreTrainedModel(PreTrainedModel):
     _supports_cache_class = True
     _supports_quantized_cache = True
     _supports_static_cache = True
-    _supports_flex_attn = is_torch_greater_or_equal("2.5")
 
     def _init_weights(self, module):
         std = self.config.initializer_range
@@ -609,7 +597,7 @@ GEMMA_INPUTS_DOCSTRING = r"""
 
             Two formats are allowed:
             - a [`~cache_utils.Cache`] instance, see our
-            [kv cache guide](https://huggingface.co/docs/transformers/en/kv_cache#legacy-cache-format);
+            [kv cache guide](https://huggingface.co/docs/transformers/en/kv_cache);
             - Tuple of `tuple(torch.FloatTensor)` of length `config.n_layers`, with each tuple having 2 tensors of
             shape `(batch_size, num_heads, sequence_length, embed_size_per_head)`). This is also known as the legacy
             cache format.
