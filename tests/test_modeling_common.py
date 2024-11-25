@@ -3870,6 +3870,13 @@ class ModelTesterMixin:
                     else:
                         outputs = model_sdpa(**inputs_dict, output_attentions=True)
 
+                    # Verify that attention outputs are present and have the expected format
+                    if hasattr(outputs, "attentions"):
+                        self.assertIsNotNone(outputs.attentions, "Model should output attention weights")
+                        self.assertTrue(isinstance(outputs.attentions, (tuple, list)))
+                    elif isinstance(outputs, tuple) and len(outputs) > 1:
+                        self.assertIsNotNone(outputs[1], "Model should output attention weights")
+
                 except (RuntimeError, ValueError) as e:
                     # Skip models that have incompatible input requirements
                     self.skipTest(f"Model {model_class.__name__} has incompatible inputs for SDPA: {str(e)}")
@@ -3894,10 +3901,9 @@ class ModelTesterMixin:
                     if model_sdpa.config.model_type in ["gemma", "xlm-roberta-xl"]:
                         # These models use config._attn_implementation instead of dedicated SDPA classes
                         self.assertEqual(model_sdpa.config._attn_implementation, "sdpa")
-                    elif model_sdpa.config.model_type not in ["falcon", "siglip", "hubert", "bert"]:  
-                        # Add models that need special handling
+                    elif model_sdpa.config.model_type not in ["falcon", "siglip", "hubert", "bert"]:
                         raise ValueError("The SDPA model should have SDPA attention layers")
-                
+
     @require_torch_sdpa
     def test_sdpa_can_dispatch_composite_models(self):
         """
