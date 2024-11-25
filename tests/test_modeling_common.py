@@ -3857,6 +3857,12 @@ class ModelTesterMixin:
                 # Pass output_attentions=True when calling the model
                 outputs = model_sdpa(**inputs_dict, output_attentions=True)
 
+                # Actually use the outputs to check attention weights
+                if hasattr(outputs, "attentions"):
+                    self.assertIsNotNone(outputs.attentions, "Model should return attention weights")
+                elif isinstance(outputs, tuple) and len(outputs) > 1:
+                    self.assertIsNotNone(outputs[1], "Model should return attention weights as second element")
+
                 model_eager = model_class.from_pretrained(tmpdirname, attn_implementation="eager")
                 model_eager = model_eager.eval().to(torch_device)
                 self.assertTrue(model_eager.config._attn_implementation == "eager")
@@ -3866,7 +3872,6 @@ class ModelTesterMixin:
                     if "SdpaAttention" in class_name or "SdpaSelfAttention" in class_name:
                         raise ValueError("The eager model should not have SDPA attention layers")
 
-                # Check for SDPA layers
                 has_sdpa = False
                 for name, submodule in model_sdpa.named_modules():
                     class_name = submodule.__class__.__name__

@@ -628,12 +628,8 @@ class GemmaIntegrationTest(unittest.TestCase):
         model = AutoModelForCausalLM.from_pretrained(
             model_id, low_cpu_mem_usage=True, attn_implementation="flex_attention"
         ).to(torch_device)
-<<<<<<< HEAD
-        assert model.config._attn_implementation == "flex_attn"
-=======
 
         assert model.config._attn_implementation == "flex_attention"
->>>>>>> 25662081b (fix the issue with sdpa layers and some small issue)
         tokenizer = AutoTokenizer.from_pretrained(model_id)
         pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
@@ -923,5 +919,4 @@ class GemmaIntegrationTest(unittest.TestCase):
             **inputs, max_new_tokens=20, do_sample=False, dola_layers="low", repetition_penalty=1.2
         )
         output_text = tokenizer.batch_decode(output, skip_special_tokens=True)
-        print("test_model_2b_bf16_dola", output_text)
         self.assertEqual(output_text, EXPECTED_TEXTS)
