@@ -13,6 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import math 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import sentencepiece as spm
@@ -442,27 +443,27 @@ class GemmaMLP(nn.Module):
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
 
-def eager_attention_forward(config, query, key, value, mask, **_kwargs):
-    key_states = repeat_kv(key, config.num_key_value_groups)
-    value_states = repeat_kv(value, config.num_key_value_groups)
+def eager_attention_forward(config, groups,query, key, value, attention_mask,training, scaling, **_kwargs):
+    key_states = repeat_kv(key, groups)
+    value_states = repeat_kv(value, groups)
 
-    attn_weights = torch.matmul(query, key_states.transpose(2, 3))
+    attn_weights = torch.matmul(query, key_states.transpose(2, 3)) * scaling
 
-    if mask is not None:  # no matter the length, we just slice it
-        causal_mask = mask[:, :, :, : key_states.shape[-2]]
+    if attention_mask is not None:  # no matter the length, we just slice it
+        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
         attn_weights = attn_weights + causal_mask
 
     # upcast attention to fp32
     attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query.dtype)
-    attn_weights = nn.functional.dropout(attn_weights, p=config.attention_dropout, training=config.training)
+    attn_weights = nn.functional.dropout(attn_weights, p=config.attention_dropout, training=training)
     attn_output = torch.matmul(attn_weights, value_states)
     attn_output = attn_output.transpose(1, 2).contiguous()
     return attn_output, attn_weights
 
 
-def flash_attention_forward(config, query, key, value, mask, target_dtype=torch.float16, **_kwargs):
-    if mask is not None:
-        seq_len = mask.shape[1]
+def flash_attention_forward(config, query, key, value, attention_mask, scaling, target_dtype=torch.float16, training,**_kwargs):
+    if attention_mask is not None:
+        seq_len = attention_mask.shape[1]
         query = query[:, :, :seq_len]
         value = value[:, :, :seq_len]
 
@@ -472,7 +473,7 @@ def flash_attention_forward(config, query, key, value, mask, target_dtype=torch.
     key_states = key.transpose(1, 2)
     value_states = value.transpose(1, 2)
 
-    dropout_rate = config.attention_dropout if config.training else 0.0
+    dropout_rate = config.attention_dropout if training else 0.0
 
     input_dtype = query_states.dtype
     if input_dtype == torch.float32:
@@ -484,8 +485,9 @@ def flash_attention_forward(config, query, key, value, mask, target_dtype=torch.
         query_states,
         key_states,
         value_states,
-        mask,
+        attention_mask,
         seq_len,
+        softmax_scale=scaling,
         dropout=dropout_rate,
         is_causal=config.is_causal,
         sliding_window=config.sliding_window,
@@ -495,26 +497,46 @@ def flash_attention_forward(config, query, key, value, mask, target_dtype=torch.
     return attn_output, None
 
 
-def flex_attention_forward(config, query, key, value, output_attentions=False, **_kwargs):
+
+
+def flex_attention_forward(
+    query, key, value, attention_mask,  output_attentions=False, **_kwargs
+):
+    causal_mask_exists = attention_mask is not None
+  
+
+    causal_mask = attention_mask
+    if causal_mask_exists:
+        causal_mask = causal_mask[:, :, :, : key.shape[-2]]
+
+    def causal_mod(score, b, h, q_idx, kv_idx):
+        if causal_mask_exists:
+            score += causal_mask[b][0][q_idx][kv_idx]
+        return score
+
     attn_output = flex_attention(
         query,
         key,
         value,
+        score_mod=causal_mod,
         enable_gqa=True,
         return_lse=output_attentions,
     )
+
+    # Reshape outputs
+    attn_output = attn_output.transpose(1, 2).contiguous()
     if not output_attentions:
         return attn_output, None
     else:
         return attn_output[0], attn_output[1]
 
 
-def sdpa_attention_forward(config, query, key, value, mask, **_kwargs):
+def sdpa_attention_forward(config, query, key, value, attention_mask,training, **_kwargs):
     key = repeat_kv(key, config.num_key_value_groups)
     value = repeat_kv(value, config.num_key_value_groups)
 
-    causal_mask = mask
-    if mask is not None:
+    causal_mask = attention_mask
+    if attention_mask is not None:
         causal_mask = causal_mask[:, :, :, : key.shape[-2]]
 
     # SDPA with memory-efficient backend is currently (torch==2.1.2) bugged with non-contiguous inputs with custom attn_mask,
@@ -533,9 +555,10 @@ def sdpa_attention_forward(config, query, key, value, mask, **_kwargs):
         key,
         value,
         attn_mask=causal_mask,
-        dropout_p=config.attention_dropout if config.training else 0.0,
+        dropout_p=config.attention_dropout if training else 0.0,
         is_causal=is_causal,
     )
+    attn_output = attn_output.transpose(1,2)
     return attn_output, None
 
 
@@ -563,8 +586,14 @@ class GemmaAttention(nn.Module):
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
         self.max_position_embeddings = config.max_position_embeddings
         self.rope_theta = config.rope_theta
+        self.scaling = 1 / math.sqrt(config.head_dim)
         self.is_causal = True
-
+        if layer_idx is None:
+            logger.warning_once(
+                f"Instantiating {self.__class__.__name__} without passing a `layer_idx` is not recommended and will "
+                "lead to errors during the forward call if caching is used. Please make sure to provide a `layer_idx` "
+                "when creating this class."
+            )
         if self.hidden_size % self.num_heads != 0:
             raise ValueError(
                 f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
@@ -618,12 +647,32 @@ class GemmaAttention(nn.Module):
             attention_type = "eager"
         else:
             attention_type = self.config._attn_implementation
+        
+        if (
+            self.training
+            and self.config.attention_dropout > 0
+            and self.config._attn_implementation == "flex_attention"
+        ):
+            logger.warning_once(
+                f"Setting `attention_type` to `eager` because `dropout` is not supported in {attention_type}"
+            )
+            attention_type = "eager"
 
         attn_output, attn_weights = GEMMA_ATTENTION_FUNCTION[attention_type](
-            self, query_states, key_states, value_states, attention_mask, output_attentions=output_attentions
+            self, 
+            query = query_states, 
+            key=key_states, 
+            value = value_states, 
+            scaling=self.scaling,
+            groups = self.num_key_value_groups,
+            attention_mask=attention_mask,
+            target_dtype=torch.float16,
+            training=self.training,
+            output_attentions=output_attentions
         )
 
-        attn_output = attn_output.reshape(bsz, q_len, -1).contiguous()
+        attn_output = attn_output.contiguous()
+        attn_output = attn_output.view(bsz, q_len, -1)
         attn_output = self.o_proj(attn_output)
 
         if not output_attentions:

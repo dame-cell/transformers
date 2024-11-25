@@ -552,8 +552,8 @@ class GemmaIntegrationTest(unittest.TestCase):
         model_id = "google/gemma-2b"
 
         EXPECTED_TEXTS = [
-            "Hello I am doing a lot of research on this topic.\n\nHello,\n\nI have been a member of the ",
-            "Hi today I am going to be honest, I'm not sure if this is a good thing or not",
+            "Hello I am doing a project on the 1990s and I need to know what the most popular music",
+            "Hi today I am going to share with you a very easy and simple recipe of <strong><em>Khichdi",
         ]
 
         model = AutoModelForCausalLM.from_pretrained(
@@ -627,6 +627,7 @@ class GemmaIntegrationTest(unittest.TestCase):
         model = AutoModelForCausalLM.from_pretrained(
             model_id, low_cpu_mem_usage=True, attn_implementation="flex_attention"
         ).to(torch_device)
+        assert model.config._attn_implementation == "flex_attn"
         tokenizer = AutoTokenizer.from_pretrained(model_id)
         pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
