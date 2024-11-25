@@ -504,7 +504,6 @@ class Gemma2PreTrainedModel(PreTrainedModel):
     _supports_cache_class = True
     _supports_quantized_cache = False
     _supports_static_cache = True
-    _supports_flex_attn = is_torch_greater_or_equal("2.5")
 
     def _init_weights(self, module):
         std = self.config.initializer_range
@@ -574,7 +573,7 @@ GEMMA2_INPUTS_DOCSTRING = r"""
 
             Two formats are allowed:
             - a [`~cache_utils.Cache`] instance, see our
-            [kv cache guide](https://huggingface.co/docs/transformers/en/kv_cache#legacy-cache-format);
+            [kv cache guide](https://huggingface.co/docs/transformers/en/kv_cache);
             - Tuple of `tuple(torch.FloatTensor)` of length `config.n_layers`, with each tuple having 2 tensors of
             shape `(batch_size, num_heads, sequence_length, embed_size_per_head)`). This is also known as the legacy
             cache format.

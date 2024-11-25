@@ -2343,8 +2343,7 @@ class ModelTesterMixin:
                             recursive_check(tuple_iterable_value, dict_iterable_value)
                     elif tuple_object is None:
                         return
-                    # model might return non-tensors objects (e.g. Cache class)
-                    elif isinstance(tuple_object, torch.Tensor):
+                    else:
                         self.assertTrue(
                             torch.allclose(
                                 set_nan_tensor_to_zero(tuple_object), set_nan_tensor_to_zero(dict_object), atol=1e-5
@@ -2539,11 +2538,7 @@ class ModelTesterMixin:
             tf_outputs[pt_nans] = 0
 
             max_diff = np.amax(np.abs(tf_outputs - pt_outputs))
-            self.assertLessEqual(
-                max_diff,
-                tol,
-                f"{name}: Difference between PyTorch and TF is {max_diff} (>= {tol}) for {model_class.__name__}",
-            )
+            self.assertLessEqual(max_diff, tol, f"{name}: Difference between PyTorch and TF is {max_diff} (>= {tol}).")
         else:
             raise ValueError(
                 "`tf_outputs` should be an instance of `ModelOutput`, a `tuple`, or an instance of `tf.Tensor`. Got"
@@ -2619,7 +2614,7 @@ class ModelTesterMixin:
 
             tf_model_class = getattr(transformers, tf_model_class_name)
 
-            pt_model = model_class(config).eval()
+            pt_model = model_class(config)
             tf_model = tf_model_class(config)
 
             pt_inputs_dict = self._prepare_for_class(inputs_dict, model_class)
@@ -3854,14 +3849,30 @@ class ModelTesterMixin:
 
                 self.assertTrue(model_sdpa.config._attn_implementation == "sdpa")
 
+                # Ensure attention mask has correct shape for SDPA
+                if "attention_mask" in inputs_dict:
+                    attention_mask = inputs_dict["attention_mask"]
+                    if attention_mask is not None:
+                        batch_size, seq_length = attention_mask.shape
+                        attention_mask = attention_mask.view(batch_size, 1, 1, seq_length)
+                        attention_mask = attention_mask.expand(batch_size, 1, seq_length, seq_length)
+                        attention_mask = attention_mask.to(dtype=torch.float32)
+                        attention_mask = (1.0 - attention_mask) * torch.finfo(torch.float32).min
+                        inputs_dict["attention_mask"] = attention_mask
+
                 # Pass output_attentions=True when calling the model
                 outputs = model_sdpa(**inputs_dict, output_attentions=True)
 
-                # Actually use the outputs to check attention weights
+                # Verify outputs and attention weights
                 if hasattr(outputs, "attentions"):
-                    self.assertIsNotNone(outputs.attentions, "Model should return attention weights")
+                    self.assertIsNotNone(outputs.attentions, "Model with SDPA should return attention weights")
+                    self.assertTrue(
+                        isinstance(outputs.attentions, (tuple, list)), "Attention outputs should be a tuple/list"
+                    )
                 elif isinstance(outputs, tuple) and len(outputs) > 1:
-                    self.assertIsNotNone(outputs[1], "Model should return attention weights as second element")
+                    self.assertIsNotNone(
+                        outputs[1], "Model with SDPA should return attention weights as second element"
+                    )
 
                 model_eager = model_class.from_pretrained(tmpdirname, attn_implementation="eager")
                 model_eager = model_eager.eval().to(torch_device)
@@ -3880,8 +3891,9 @@ class ModelTesterMixin:
                         break
 
                 if not has_sdpa:
-                    if model_sdpa.config.model_type == "gemma":
-                        # Gemma uses config._attn_implementation instead of dedicated SDPA classes
+                    # Add XLM-RobertaXL to the list of models that use config-based SDPA
+                    if model_sdpa.config.model_type in ["gemma", "xlm-roberta-xl"]:
+                        # These models use config._attn_implementation instead of dedicated SDPA classes
                         self.assertEqual(model_sdpa.config._attn_implementation, "sdpa")
                     elif model_sdpa.config.model_type != "falcon":  # Keep existing Falcon exception
                         raise ValueError("The SDPA model should have SDPA attention layers")
