@@ -585,8 +585,6 @@ class GemmaIntegrationTest(unittest.TestCase):
             attn_implementation="sdpa",
         )
         model.to(torch_device)
-        print("Model", model)
-        assert model.config._attn_implementation == "sdpa"
         tokenizer = AutoTokenizer.from_pretrained(model_id)
         inputs = tokenizer(self.input_text, return_tensors="pt", padding=True).to(torch_device)
 
@@ -640,7 +638,6 @@ class GemmaIntegrationTest(unittest.TestCase):
         pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
         output = pipe(self.input_text, max_new_tokens=20, do_sample=False, padding=True)
-        print("output", output)
         self.assertEqual(output[0][0]["generated_text"], EXPECTED_TEXTS[0])
         self.assertEqual(output[1][0]["generated_text"], EXPECTED_TEXTS[1])
 
